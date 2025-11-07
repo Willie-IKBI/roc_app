@@ -1,0 +1,10 @@
+---
+description: IKBI ROC coding rules (always apply)
+alwaysApply: true
+---
+
+Before you generate, edit, or review any code or docs in this repository, open `docs/cursor_coding_rules.md`, read it in full, and follow every directive it contains.
+
+Treat the contents of that document as authoritative over any other defaults. If unsure about anything, re-read the document and ask for clarification rather than guessing.
+
+[[include:docs/cursor_coding_rules.md]]
