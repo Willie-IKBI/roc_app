@@ -1,16 +1,25 @@
-# roc_app
+# ROC Web Console
 
-A new Flutter project.
+Flutter + Supabase web console for Repair On Call.
 
-## Getting Started
+## Local setup
 
-This project is a starting point for a Flutter application.
+1. Install Flutter 3.22+ and Supabase CLI.
+2. Copy the environment templates and populate them with your secrets (never commit the filled files):
+   ```
+   cp env/dev.example.json env/dev.json
+   cp env/prod.example.json env/prod.json
+   ```
+3. Run the dev server:
+   ```
+   flutter run -d chrome --dart-define-from-file=env/dev.json
+   ```
 
-A few resources to get you started if this is your first Flutter project:
+## Deploy
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```
+flutter build web --dart-define-from-file=env/prod.json
+firebase deploy --only hosting
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Supabase migrations live in `supabase/migrations/`. Use `supabase db push` to apply them. Secret scanning will flag committed keys, so keep your real `env/*.json` out of git (see `.gitignore`).
