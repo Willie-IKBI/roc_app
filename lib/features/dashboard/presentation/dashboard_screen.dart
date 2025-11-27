@@ -855,7 +855,7 @@ class _TimelineTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${claim.insurerName} • ${claim.status.name.toUpperCase()}',
+                  '${claim.insurerName} • ${claim.status.label}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

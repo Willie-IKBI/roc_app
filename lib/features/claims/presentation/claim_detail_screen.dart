@@ -95,9 +95,7 @@ class ClaimDetailScreen extends ConsumerWidget {
       state.when(
         data: (_) => messenger.showSnackBar(
           SnackBar(
-            content: Text(
-              'Status changed to ${result.newStatus.name.replaceAll('_', ' ')}',
-            ),
+            content: Text('Status changed to ${result.newStatus.label}'),
           ),
         ),
         error: (error, _) => messenger.showSnackBar(
@@ -214,7 +212,7 @@ class _OverviewTab extends StatelessWidget {
                 _KeyValueRow(label: 'Claim number', value: detail.claimNumber),
                 _KeyValueRow(
                   label: 'Status',
-                  value: detail.status.name.replaceAll('_', ' '),
+                  value: detail.status.label,
                 ),
                 _KeyValueRow(label: 'Priority', value: detail.priority.name),
                 _KeyValueRow(
@@ -737,7 +735,7 @@ class _ChangeStatusDialogState extends State<_ChangeStatusDialog> {
                 .map(
                   (status) => DropdownMenuItem(
                     value: status,
-                    child: Text(status.name.replaceAll('_', ' ')),
+                    child: Text(status.label),
                   ),
                 )
                 .toList(growable: false),

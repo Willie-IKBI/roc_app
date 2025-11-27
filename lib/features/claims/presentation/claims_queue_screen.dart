@@ -240,7 +240,7 @@ class _ClaimCard extends StatelessWidget {
                   Chip(
                     backgroundColor: _statusColor(claim.status),
                     label: Text(
-                      claim.status.name.replaceAll('_', ' '),
+                      claim.status.label,
                       style: theme.textTheme.labelSmall
                           ?.copyWith(color: RocColors.white),
                     ),
@@ -443,7 +443,7 @@ class _FiltersBar extends StatelessWidget {
                       ...ClaimStatus.values.map(
                         (status) => DropdownMenuEntry(
                           value: status,
-                          label: status.name.replaceAll('_', ' '),
+                          label: status.label,
                         ),
                       ),
                     ],

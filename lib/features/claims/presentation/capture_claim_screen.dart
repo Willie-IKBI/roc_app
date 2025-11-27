@@ -220,7 +220,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
     });
   }
 
-  void _removeItem(int index) {
+  void _removeItem(_ClaimItemFormState item) {
     if (_items.length == 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('At least one claim item is required.')),
@@ -228,7 +228,8 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
       return;
     }
     setState(() {
-      _items.removeAt(index).dispose();
+      _items.remove(item);
+      item.dispose();
     });
   }
 
@@ -1560,19 +1561,22 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                           const SizedBox(height: 16),
                           ...List.generate(
                             _items.length,
-                            (index) => Padding(
+                            (index) {
+                              final item = _items[index];
+                              return Padding(
                               padding: EdgeInsets.only(
                                 bottom: index == _items.length - 1 ? 0 : 12,
                               ),
                               child: _ClaimItemCard(
-                                item: _items[index],
+                                item: item,
                                 index: index,
-                                onRemove: () => _removeItem(index),
+                                onRemove: () => _removeItem(item),
                                 brandOptions: brandOptions,
                                 brandsLoading: brandsLoading,
                                 brandsError: brandsError,
                               ),
-                            ),
+                              );
+                            },
                           ),
                           const SizedBox(height: 16),
                           FilledButton.tonalIcon(

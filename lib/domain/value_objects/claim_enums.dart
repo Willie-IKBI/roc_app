@@ -1,16 +1,17 @@
 enum ClaimStatus {
-  newClaim('new'),
-  inContact('in_contact'),
-  awaitingClient('awaiting_client'),
-  scheduled('scheduled'),
-  workInProgress('work_in_progress'),
-  onHold('on_hold'),
-  closed('closed'),
-  cancelled('cancelled');
+  newClaim('new', 'New Claim'),
+  inContact('in_contact', 'In Contact'),
+  awaitingClient('awaiting_client', 'Awaiting Client'),
+  scheduled('scheduled', 'Scheduled'),
+  workInProgress('work_in_progress', 'Work In Progress'),
+  onHold('on_hold', 'On Hold'),
+  closed('closed', 'Closed'),
+  cancelled('cancelled', 'Cancelled');
 
-  const ClaimStatus(this.value);
+  const ClaimStatus(this.value, this.label);
 
   final String value;
+  final String label;
 
   static ClaimStatus fromJson(String raw) => ClaimStatus.values.firstWhere(
         (status) => status.value == raw,
