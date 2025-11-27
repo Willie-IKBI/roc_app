@@ -1,0 +1,517 @@
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show PostgrestException, SupabaseClient;
+
+import '../../core/errors/domain_error.dart';
+import '../../core/utils/result.dart';
+import '../../domain/models/claim_draft.dart';
+import '../../domain/value_objects/claim_enums.dart';
+import '../clients/supabase_client.dart';
+import '../models/address_row.dart';
+import '../models/claim_item_row.dart';
+import '../models/claim_row.dart';
+import '../models/claim_status_history_row.dart';
+import '../models/claim_summary_row.dart';
+import '../models/client_row.dart';
+import '../models/contact_attempt_row.dart';
+import 'claim_remote_data_source.dart';
+
+class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
+  SupabaseClaimRemoteDataSource(this._client);
+
+  final SupabaseClient _client;
+
+  @override
+  Future<Result<List<ClaimSummaryRow>>> fetchQueue({
+    ClaimStatus? status,
+  }) async {
+    try {
+      var query = _client.from('v_claims_list').select('*');
+      if (status != null) {
+        query = query.eq('status', status.value);
+      }
+      final data = await query.order('sla_started_at', ascending: true);
+      final rows = (data as List)
+          .cast<Map<String, dynamic>>()
+          .map(ClaimSummaryRow.fromJson)
+          .toList(growable: false);
+      return Result.ok(rows);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<ClaimRow>> fetchClaim(String claimId) async {
+    try {
+      final data = await _client
+          .from('claims')
+          .select(
+            'id, tenant_id, claim_number, insurer_id, client_id, address_id, service_provider_id, das_number, status, priority, damage_cause, damage_description, surge_protection_at_db, surge_protection_at_plug, agent_id, sla_started_at, closed_at, notes_public, notes_internal, created_at, updated_at',
+          )
+          .eq('id', claimId)
+          .single();
+      final record = Map<String, dynamic>.from(data as Map);
+      return Result.ok(ClaimRow.fromJson(record));
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<List<ClaimItemRow>>> fetchClaimItems(String claimId) async {
+    try {
+      final data = await _client
+          .from('claim_items')
+          .select('*')
+          .eq('claim_id', claimId)
+          .order('created_at');
+
+      final items = (data as List)
+          .cast<Map<String, dynamic>>()
+          .map(ClaimItemRow.fromJson)
+          .toList(growable: false);
+      return Result.ok(items);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<ContactAttemptRow?>> fetchLatestContact(String claimId) async {
+    try {
+      final data = await _client
+          .from('contact_attempts')
+          .select('*')
+          .eq('claim_id', claimId)
+          .order('attempted_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      return Result.ok(
+        data == null
+            ? null
+            : ContactAttemptRow.fromJson(
+                Map<String, dynamic>.from(data as Map),
+              ),
+      );
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<List<ContactAttemptRow>>> fetchContactAttempts(
+    String claimId,
+  ) async {
+    try {
+      final data = await _client
+          .from('contact_attempts')
+          .select('*')
+          .eq('claim_id', claimId)
+          .order('attempted_at', ascending: false);
+
+      final attempts = (data as List)
+          .cast<Map<String, dynamic>>()
+          .map(ContactAttemptRow.fromJson)
+          .toList(growable: false);
+      return Result.ok(attempts);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<List<ClaimStatusHistoryRow>>> fetchStatusHistory(
+    String claimId,
+  ) async {
+    try {
+      final data = await _client
+          .from('claim_status_history')
+          .select('*')
+          .eq('claim_id', claimId)
+          .order('changed_at', ascending: false);
+
+      final history = (data as List)
+          .cast<Map<String, dynamic>>()
+          .map(ClaimStatusHistoryRow.fromJson)
+          .toList(growable: false);
+      return Result.ok(history);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<ClientRow>> fetchClient(String clientId) async {
+    try {
+      final data = await _client
+          .from('clients')
+          .select('*')
+          .eq('id', clientId)
+          .single();
+      return Result.ok(
+        ClientRow.fromJson(Map<String, dynamic>.from(data as Map)),
+      );
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<AddressRow>> fetchAddress(String addressId) async {
+    try {
+      final data = await _client
+          .from('addresses')
+          .select('*, estate:estate_id(*)')
+          .eq('id', addressId)
+          .single();
+      return Result.ok(
+        AddressRow.fromJson(Map<String, dynamic>.from(data as Map)),
+      );
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<void>> createContactAttempt({
+    required String claimId,
+    required String tenantId,
+    required String method,
+    required String outcome,
+    String? notes,
+    bool sendSmsTemplate = false,
+    String? smsTemplateId,
+  }) async {
+    final attemptedBy = _client.auth.currentUser?.id;
+    if (attemptedBy == null) {
+      return Result.err(const AuthError(code: 'not-authenticated'));
+    }
+
+    try {
+      await _client.from('contact_attempts').insert({
+        'tenant_id': tenantId,
+        'claim_id': claimId,
+        'attempted_by': attemptedBy,
+        'method': method,
+        'outcome': outcome,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      });
+
+      // TODO(phase2): sendSmsTemplate integration (edge function / SMS provider).
+
+      return const Result.ok(null);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<void>> updateClaimStatus({
+    required String claimId,
+    required String tenantId,
+    required ClaimStatus fromStatus,
+    required ClaimStatus toStatus,
+    String? reason,
+  }) async {
+    final changedBy = _client.auth.currentUser?.id;
+
+    try {
+      final now = DateTime.now().toUtc();
+      final updatePayload = <String, dynamic>{
+        'status': toStatus.value,
+        'updated_at': now.toIso8601String(),
+      };
+
+      if (toStatus == ClaimStatus.closed || toStatus == ClaimStatus.cancelled) {
+        updatePayload['closed_at'] = now.toIso8601String();
+      } else if (fromStatus == ClaimStatus.closed ||
+          fromStatus == ClaimStatus.cancelled) {
+        updatePayload['closed_at'] = null;
+      }
+
+      await _client.from('claims').update(updatePayload).eq('id', claimId);
+
+      await _client.from('claim_status_history').insert({
+        'tenant_id': tenantId,
+        'claim_id': claimId,
+        'from_status': fromStatus.value,
+        'to_status': toStatus.value,
+        'changed_by': changedBy,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      });
+
+      return const Result.ok(null);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<String>> createClaim(ClaimDraft draft) async {
+    try {
+      String? clientId = draft.clientId;
+      if (clientId == null && draft.clientInput != null) {
+        final clientResult = await createClient(
+          tenantId: draft.tenantId,
+          input: draft.clientInput!,
+        );
+        if (clientResult.isErr) return Result.err(clientResult.error);
+        clientId = clientResult.data;
+      }
+
+      if (clientId == null) {
+        return Result.err(ValidationError('Client details missing'));
+      }
+
+      String? addressId = draft.addressId;
+      if (addressId == null && draft.addressInput != null) {
+        final addressResult = await createAddress(
+          tenantId: draft.tenantId,
+          clientId: clientId,
+          input: draft.addressInput!,
+        );
+        if (addressResult.isErr) return Result.err(addressResult.error);
+        addressId = addressResult.data;
+      }
+
+      if (addressId == null) {
+        return Result.err(ValidationError('Address details missing'));
+      }
+
+      String? serviceProviderId = draft.serviceProviderId;
+      if (serviceProviderId == null && draft.serviceProviderInput != null) {
+        final providerResult = await createServiceProvider(
+          tenantId: draft.tenantId,
+          input: draft.serviceProviderInput!,
+        );
+        if (providerResult.isErr) return Result.err(providerResult.error);
+        serviceProviderId = providerResult.data;
+      }
+
+      final payload = <String, dynamic>{
+        'tenant_id': draft.tenantId,
+        'claim_number': draft.claimNumber,
+        'insurer_id': draft.insurerId,
+        'client_id': clientId,
+        'address_id': addressId,
+        'service_provider_id': serviceProviderId,
+        'das_number': draft.dasNumber?.trim(),
+        'priority': draft.priority.value,
+        'damage_cause': draft.damageCause.value,
+        'damage_description': draft.damageDescription,
+        'surge_protection_at_db': draft.surgeProtectionAtDb,
+        'surge_protection_at_plug': draft.surgeProtectionAtPlug,
+        'agent_id': draft.agentId,
+        'notes_public': draft.clientNotes ?? draft.notesPublic,
+        'notes_internal': draft.notesInternal,
+      }..removeWhere((_, value) => value == null);
+
+      final record = await _client
+          .from('claims')
+          .insert(payload)
+          .select('id')
+          .single();
+
+      return Result.ok(record['id'] as String);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<void>> createClaimItems({
+    required String claimId,
+    required ClaimDraft draft,
+  }) async {
+    if (draft.items.isEmpty) {
+      return const Result.ok(null);
+    }
+
+    final payload = draft.items
+        .map(
+          (item) => <String, dynamic>{
+            'tenant_id': draft.tenantId,
+            'claim_id': claimId,
+            'brand': item.brand,
+            'color': item.color,
+            'warranty': item.warranty.value,
+            'serial_or_model': item.serialOrModel,
+            'notes': item.notes,
+          }..removeWhere((_, value) => value == null),
+        )
+        .toList(growable: false);
+
+    try {
+      await _client.from('claim_items').insert(payload);
+      return const Result.ok(null);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<bool>> claimExists({
+    required String insurerId,
+    required String claimNumber,
+  }) async {
+    try {
+      final data = await _client
+          .from('claims')
+          .select('id')
+          .eq('insurer_id', insurerId)
+          .ilike('claim_number', claimNumber.trim())
+          .limit(1)
+          .maybeSingle();
+      return Result.ok(data != null);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<String>> createClient({
+    required String tenantId,
+    required ClientInput input,
+  }) async {
+    try {
+      final record = await _client
+          .from('clients')
+          .insert({
+            'tenant_id': tenantId,
+            'first_name': input.firstName.trim(),
+            'last_name': input.lastName.trim(),
+            'primary_phone': input.primaryPhone.trim(),
+            if (input.altPhone != null && input.altPhone!.trim().isNotEmpty)
+              'alt_phone': input.altPhone!.trim(),
+            if (input.email != null && input.email!.trim().isNotEmpty)
+              'email': input.email!.trim(),
+          })
+          .select('id')
+          .single();
+      return Result.ok(record['id'] as String);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<String>> createAddress({
+    required String tenantId,
+    required String clientId,
+    required AddressInput input,
+  }) async {
+    try {
+      final record = await _client
+          .from('addresses')
+          .insert({
+            'tenant_id': tenantId,
+            'client_id': clientId,
+            if (input.estateId != null && input.estateId!.isNotEmpty)
+              'estate_id': input.estateId,
+            if (input.complexOrEstate != null &&
+                input.complexOrEstate!.trim().isNotEmpty)
+              'complex_or_estate': input.complexOrEstate!.trim(),
+            if (input.unitNumber != null && input.unitNumber!.trim().isNotEmpty)
+              'unit_number': input.unitNumber!.trim(),
+            'street': input.street.trim(),
+            'suburb': input.suburb.trim(),
+            'city': input.city.trim(),
+            'province': input.province.trim(),
+            'postal_code': input.postalCode.trim(),
+            if (input.latitude != null) 'lat': input.latitude,
+            if (input.longitude != null) 'lng': input.longitude,
+            if (input.googlePlaceId != null &&
+                input.googlePlaceId!.trim().isNotEmpty)
+              'google_place_id': input.googlePlaceId!.trim(),
+            if (input.notes != null && input.notes!.trim().isNotEmpty)
+              'notes': input.notes!.trim(),
+          })
+          .select('id')
+          .single();
+      return Result.ok(record['id'] as String);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<String?>> createServiceProvider({
+    required String tenantId,
+    required ServiceProviderInput input,
+  }) async {
+    try {
+      final record = await _client
+          .from('service_providers')
+          .insert({
+            'tenant_id': tenantId,
+            'company_name': input.companyName.trim(),
+            if (input.contactName != null &&
+                input.contactName!.trim().isNotEmpty)
+              'contact_name': input.contactName!.trim(),
+            if (input.contactPhone != null &&
+                input.contactPhone!.trim().isNotEmpty)
+              'contact_phone': input.contactPhone!.trim(),
+            if (input.contactEmail != null &&
+                input.contactEmail!.trim().isNotEmpty)
+              'contact_email': input.contactEmail!.trim(),
+            if (input.referenceNumber != null &&
+                input.referenceNumber!.trim().isNotEmpty)
+              'reference_number_format': input.referenceNumber!.trim(),
+          })
+          .select('id')
+          .maybeSingle();
+      return Result.ok(record?['id'] as String?);
+    } on PostgrestException catch (err) {
+      // treat unique violation as returning existing provider
+      if (err.code == '23505') {
+        final company = input.companyName.trim();
+        try {
+          final existing = await _client
+              .from('service_providers')
+              .select('id')
+              .eq('tenant_id', tenantId)
+              .ilike('company_name', company)
+              .limit(1)
+              .maybeSingle();
+          return Result.ok(existing?['id'] as String?);
+        } catch (_) {
+          return Result.err(mapPostgrestException(err));
+        }
+      }
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+}

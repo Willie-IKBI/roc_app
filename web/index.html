@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="roc_app">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>roc_app</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <script>
+    window.rocPlaces = (function () {
+      let scriptLoader = null;
+      let placesLibraryPromise = null;
+      let autocompleteService = null;
+      let placesService = null;
+      let sessionToken = null;
+      let cachedKey = '';
+
+      function loadScript(apiKey) {
+        if (!apiKey) {
+          return Promise.reject('Missing Maps API key.');
+        }
+        if (window.google && window.google.maps && window.google.maps.places) {
+          return Promise.resolve();
+        }
+        if (scriptLoader) {
+          return scriptLoader;
+        }
+        scriptLoader = new Promise(function (resolve, reject) {
+          const script = document.createElement('script');
+          script.src =
+            'https://maps.googleapis.com/maps/api/js?key=' +
+            encodeURIComponent(apiKey) +
+            '&libraries=places&v=weekly';
+          script.async = true;
+          script.defer = true;
+          script.onload = function () {
+            resolve();
+          };
+          script.onerror = function (error) {
+            reject(error);
+          };
+          document.head.appendChild(script);
+        });
+        return scriptLoader;
+      }
+
+      async function ensurePlacesReady(apiKey) {
+        if (!apiKey) {
+          return Promise.reject('Missing Maps API key.');
+        }
+        cachedKey = apiKey;
+        await loadScript(apiKey);
+        if (
+          window.google &&
+          window.google.maps &&
+          window.google.maps.importLibrary
+        ) {
+          if (!placesLibraryPromise) {
+            placesLibraryPromise = window.google.maps.importLibrary('places');
+          }
+          await placesLibraryPromise;
+        }
+        if (!autocompleteService) {
+          autocompleteService = new google.maps.places.AutocompleteService();
+        }
+        if (!placesService) {
+          const div = document.createElement('div');
+          placesService = new google.maps.places.PlacesService(div);
+        }
+      }
+
+      function getSessionToken() {
+        if (
+          !sessionToken &&
+          window.google &&
+          window.google.maps &&
+          window.google.maps.places &&
+          window.google.maps.places.AutocompleteSessionToken
+        ) {
+          sessionToken = new google.maps.places.AutocompleteSessionToken();
+        }
+        return sessionToken;
+      }
+
+      function resetSessionToken() {
+        sessionToken = null;
+      }
+
+      function mapPrediction(prediction) {
+        const structured =
+          prediction.structured_formatting || prediction.structuredFormatting;
+        return {
+          description: prediction.description || '',
+          place_id: prediction.place_id || prediction.placeId || '',
+          structured_formatting: structured
+            ? {
+                main_text:
+                  structured.main_text || structured.mainText || '',
+                secondary_text:
+                  structured.secondary_text || structured.secondaryText || '',
+              }
+            : null,
+        };
+      }
+
+      function mapAddressComponents(components) {
+        return (components || []).map(function (component) {
+          return {
+            long_name: component.long_name,
+            short_name: component.short_name,
+            types: component.types || [],
+          };
+        });
+      }
+
+      return {
+        ensureLoaded: function (apiKey) {
+          return ensurePlacesReady(apiKey);
+        },
+        autocomplete: function (query) {
+          if (!query || !query.trim()) {
+            return Promise.resolve([]);
+          }
+          if (!cachedKey) {
+            return Promise.reject('Places API not initialized');
+          }
+          return ensurePlacesReady(cachedKey).then(function () {
+            return new Promise(function (resolve, reject) {
+              autocompleteService.getPlacePredictions(
+                {
+                  input: query,
+                  sessionToken: getSessionToken(),
+                  componentRestrictions: { country: 'za' },
+                },
+                function (predictions, status) {
+                  if (
+                    status !== google.maps.places.PlacesServiceStatus.OK ||
+                    !predictions
+                  ) {
+                    reject(status);
+                    return;
+                  }
+                  resolve(predictions.map(mapPrediction));
+                }
+              );
+            });
+          });
+        },
+        placeDetails: function (placeId) {
+          if (!placeId) {
+            return Promise.reject('INVALID_PLACE_ID');
+          }
+          if (!cachedKey) {
+            return Promise.reject('Places API not initialized');
+          }
+          return ensurePlacesReady(cachedKey).then(function () {
+            return new Promise(function (resolve, reject) {
+              placesService.getDetails(
+                {
+                  placeId: placeId,
+                  fields: ['address_components', 'geometry', 'formatted_address'],
+                  sessionToken: getSessionToken(),
+                },
+                function (result, status) {
+                  if (
+                    status !== google.maps.places.PlacesServiceStatus.OK ||
+                    !result
+                  ) {
+                    reject(status);
+                    resetSessionToken();
+                    return;
+                  }
+                  const location =
+                    result.geometry && result.geometry.location
+                      ? {
+                          lat: result.geometry.location.lat(),
+                          lng: result.geometry.location.lng(),
+                        }
+                      : null;
+                  resolve({
+                    formatted_address: result.formatted_address || '',
+                    geometry: location ? { location: location } : null,
+                    address_components: mapAddressComponents(
+                      result.address_components
+                    ),
+                  });
+                  resetSessionToken();
+                }
+              );
+            });
+          });
+        },
+      };
+    })();
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
