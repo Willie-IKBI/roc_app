@@ -115,10 +115,10 @@ class ClaimDetailScreen extends ConsumerWidget {
             onPressed: () => context.pop(),
           ),
           bottom: TabBar(
-            labelColor: Theme.of(context).colorScheme.primary,
+            labelColor: Theme.of(context).colorScheme.onPrimary,
             unselectedLabelColor:
-                Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.65),
-            indicatorColor: Theme.of(context).colorScheme.primary,
+                Theme.of(context).colorScheme.onPrimary.withOpacity(0.65),
+            indicatorColor: Colors.white,
             indicatorWeight: 3,
             tabs: const [
               Tab(text: 'Overview'),
