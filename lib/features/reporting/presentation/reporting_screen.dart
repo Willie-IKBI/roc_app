@@ -6,6 +6,8 @@ import '../../../core/theme/design_tokens.dart';
 import '../../../core/theme/roc_color_scheme.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_empty_state.dart';
+import '../../../core/widgets/glass_error_state.dart';
 import '../../../domain/models/daily_claim_report.dart';
 import '../controller/reporting_controller.dart';
 import '../domain/reporting_state.dart';
@@ -69,7 +71,11 @@ class _ReportingScreenState extends ConsumerState<ReportingScreen> {
       data: (data) {
         final reports = data.reports;
         if (reports.isEmpty) {
-          return const _EmptyReportingState();
+          return const GlassEmptyState(
+            icon: Icons.equalizer_outlined,
+            title: 'No reporting data yet',
+            description: 'Once claims start flowing, you\'ll see daily insights here.',
+          );
         }
 
         return RefreshIndicator(
@@ -118,7 +124,8 @@ class _ReportingScreenState extends ConsumerState<ReportingScreen> {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _ErrorReportState(
+      error: (error, _) => GlassErrorState(
+        title: 'Unable to load reports',
         message: error.toString(),
         onRetry: () =>
             ref.read(reportingControllerProvider.notifier).refresh(),
@@ -556,88 +563,5 @@ class _ReportMetric extends StatelessWidget {
   }
 }
 
-class _EmptyReportingState extends StatelessWidget {
-  const _EmptyReportingState();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.equalizer_outlined,
-                size: 56, color: theme.colorScheme.outline),
-            const SizedBox(height: 12),
-            Text(
-              'No reporting data yet',
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Once claims start flowing, you\'ll see daily insights here.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorReportState extends StatelessWidget {
-  const _ErrorReportState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Unable to load reporting data',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            GlassButton.primary(
-              onPressed: onRetry,
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.refresh),
-                  SizedBox(width: DesignTokens.spaceS),
-                  Text('Retry'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 

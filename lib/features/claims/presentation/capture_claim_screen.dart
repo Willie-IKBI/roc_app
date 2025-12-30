@@ -9,6 +9,7 @@ import 'package:google_place/google_place.dart';
 
 import '../../../core/config/env.dart';
 import '../../../core/errors/domain_error.dart';
+import '../../../core/logging/logger.dart';
 import '../../../core/providers/current_user_provider.dart';
 import '../../../core/strings/app_strings.dart';
 import '../../../core/theme/design_tokens.dart';
@@ -128,11 +129,44 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Verify environment variables are present
+    if (!Env.verifyEnvVars()) {
+      AppLogger.error(
+        'Environment variables missing in capture claim screen',
+        name: 'CaptureClaim',
+      );
+    }
+    
     final apiKey = Env.googleMapsApiKey;
     if (_useWebPlaces) {
-      unawaited(PlacesWebService.ensureLoaded(apiKey));
+      // Load Places API in background, handle errors gracefully
+      PlacesWebService.ensureLoaded(apiKey).catchError((error, stackTrace) {
+        AppLogger.error(
+          'Failed to load Places API in initState: $error',
+          name: 'CaptureClaim',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        // Don't show error to user yet - will show when they try to use autocomplete
+        // The screen will gracefully degrade if Places API is unavailable
+      });
     } else if (apiKey.isNotEmpty) {
-      _googlePlace = GooglePlace(apiKey);
+      try {
+        _googlePlace = GooglePlace(apiKey);
+      } catch (e, stackTrace) {
+        AppLogger.error(
+          'Failed to initialize GooglePlace: $e',
+          name: 'CaptureClaim',
+          error: e,
+          stackTrace: stackTrace,
+        );
+      }
+    } else {
+      AppLogger.debug(
+        'Google Maps API key not configured - Places API features will be disabled',
+        name: 'CaptureClaim',
+      );
     }
     _addItem();
   }
@@ -185,9 +219,11 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
 
       return null;
     } catch (e) {
-      if (kDebugMode) {
-        print('Error parsing GPS coordinates: $e');
-      }
+      AppLogger.debug(
+        'Error parsing GPS coordinates: $e',
+        name: 'CaptureClaim',
+        error: e,
+      );
       return null;
     }
   }
@@ -239,7 +275,48 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
     _refreshAddressDialog();
 
     try {
-      await PlacesWebService.ensureLoaded(Env.googleMapsApiKey);
+      if (Env.googleMapsApiKey.isEmpty) {
+        setState(() {
+          _gpsCoordinateError = 'Google Maps API key is not configured';
+          _isReverseGeocoding = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Google Maps API key is not configured. Please configure GOOGLE_MAPS_API_KEY.'),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Load Places API with error handling
+      try {
+        await PlacesWebService.ensureLoaded(Env.googleMapsApiKey);
+      } catch (loadError, loadStack) {
+        AppLogger.error(
+          'Failed to load Places API for reverse geocoding: $loadError',
+          name: 'CaptureClaim',
+          error: loadError,
+          stackTrace: loadStack,
+        );
+        if (mounted) {
+          setState(() {
+            _gpsCoordinateError = 'Failed to load Google Maps API. Please check your API key configuration.';
+            _isReverseGeocoding = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to load Google Maps API. Please check your API key configuration.'),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Perform reverse geocoding with error handling
       final result = await PlacesWebService.reverseGeocode(_selectedLat!, _selectedLng!);
       
       if (result != null && mounted) {
@@ -324,16 +401,23 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
           );
         }
       }
-    } catch (error) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Error during reverse geocoding: $error',
+        name: 'CaptureClaim',
+        error: error,
+        stackTrace: stackTrace,
+      );
       setState(() {
         _isReverseGeocoding = false;
+        _gpsCoordinateError = 'Failed to reverse geocode coordinates. Please enter address manually.';
       });
       _refreshAddressDialog();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error reverse geocoding: $error'),
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -564,34 +648,55 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
         try {
           await PlacesWebService.ensureLoaded(Env.googleMapsApiKey);
           final results = await PlacesWebService.autocomplete(value);
-          if (kDebugMode) {
-            print('[CaptureClaim] Received ${results.length} results from PlacesWebService');
-          }
+          AppLogger.debug(
+            'Received ${results.length} results from PlacesWebService',
+            name: 'CaptureClaim',
+          );
           final predictions = results
               .map(_Prediction.fromWebJson)
               .whereType<_Prediction>()
               .toList(growable: false);
-          if (kDebugMode) {
-            print('[CaptureClaim] Created ${predictions.length} predictions after conversion');
-          }
+          AppLogger.debug(
+            'Created ${predictions.length} predictions after conversion',
+            name: 'CaptureClaim',
+          );
           setState(() {
             _addressPredictions = predictions;
             _isLoadingAutocomplete = false;
           });
           _refreshAddressDialog();
-        } catch (error) {
+        } catch (error, stackTrace) {
+          AppLogger.error(
+            'Error fetching autocomplete suggestions: $error',
+            name: 'CaptureClaim',
+            error: error,
+            stackTrace: stackTrace,
+          );
+          
           setState(() {
             _addressPredictions = [];
             _isLoadingAutocomplete = false;
           });
           _refreshAddressDialog();
+          
+          // Provide user-friendly error message
+          String errorMessage = 'Unable to search addresses';
+          if (Env.googleMapsApiKey.isEmpty) {
+            errorMessage = 'Google Maps API key is not configured. Please configure GOOGLE_MAPS_API_KEY.';
+          } else {
+            final errorStr = error.toString().toLowerCase();
+            if (errorStr.contains('api key') || errorStr.contains('invalid key')) {
+              errorMessage = 'Invalid Google Maps API key. Please check your configuration.';
+            } else if (errorStr.contains('network') || errorStr.contains('connection')) {
+              errorMessage = 'Network error. Please check your internet connection.';
+            }
+          }
+          
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(
-                  'Unable to search addresses. Please try again or enter the address manually.',
-                ),
-                duration: const Duration(seconds: 3),
+                content: Text(errorMessage),
+                duration: const Duration(seconds: 4),
               ),
             );
           }
@@ -614,12 +719,26 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
             _isLoadingAutocomplete = false;
           });
           _refreshAddressDialog();
-        } catch (error) {
+        } catch (error, stackTrace) {
+          AppLogger.error(
+            'Error fetching autocomplete suggestions (legacy): $error',
+            name: 'CaptureClaim',
+            error: error,
+            stackTrace: stackTrace,
+          );
           setState(() {
             _addressPredictions = [];
             _isLoadingAutocomplete = false;
           });
           _refreshAddressDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to fetch address suggestions: ${error.toString()}'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
         }
       }
     });
@@ -693,17 +812,17 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                     ButtonSegment<AddressInputMode>(
                       value: AddressInputMode.search,
                       label: Text('Search via Google Maps'),
-                      icon: Icon(Icons.search),
+                      icon: Icon(Icons.search, semanticLabel: 'Search address'),
                     ),
                     ButtonSegment<AddressInputMode>(
                       value: AddressInputMode.manual,
                       label: Text('Enter manually'),
-                      icon: Icon(Icons.edit_location_alt),
+                      icon: Icon(Icons.edit_location_alt, semanticLabel: 'Edit location'),
                     ),
                     ButtonSegment<AddressInputMode>(
                       value: AddressInputMode.gps,
                       label: Text('GPS coordinates'),
-                      icon: Icon(Icons.gps_fixed),
+                      icon: Icon(Icons.gps_fixed, semanticLabel: 'Use GPS coordinates'),
                     ),
                   ],
                   selected: <AddressInputMode>{_addressInputMode},
@@ -734,7 +853,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                     });
                     _refreshAddressDialog();
                   },
-                  icon: const Icon(Icons.clear),
+                  icon: const Icon(Icons.clear, semanticLabel: 'Clear'),
                 ),
             ],
           ),
@@ -746,7 +865,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
             controller: _gpsCoordinateController,
             label: 'GPS Coordinates',
             hint: 'e.g., -26.2041, 28.0473 or lat: -26.2041, lng: 28.0473',
-            prefixIcon: const Icon(Icons.gps_fixed),
+            prefixIcon: const Icon(Icons.gps_fixed, semanticLabel: 'GPS coordinates'),
             suffixIcon: _gpsCoordinateController.text.isNotEmpty
                 ? IconButton(
                     onPressed: () {
@@ -759,7 +878,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                       });
                       _refreshAddressDialog();
                     },
-                    icon: const Icon(Icons.clear),
+                    icon: const Icon(Icons.clear, semanticLabel: 'Clear'),
                   )
                 : null,
             onChanged: _handleGpsCoordinateInput,
@@ -808,11 +927,12 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                             );
                           },
                           errorBuilder: (context, error, stackTrace) {
-                            if (kDebugMode) {
-                              print('Static map image loading error: $error');
-                              print('Stack trace: $stackTrace');
-                              print('URL was: ${_staticMapUrl?.substring(0, _staticMapUrl!.length > 100 ? 100 : _staticMapUrl!.length)}...');
-                            }
+                            AppLogger.debug(
+                              'Static map image loading error: $error. Stack trace: $stackTrace',
+                              name: 'CaptureClaim',
+                              error: error,
+                              stackTrace: stackTrace,
+                            );
                             
                             String errorMessage = 'Failed to load map';
                             if (Env.googleMapsApiKey.isEmpty) {
@@ -959,7 +1079,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                       });
                       _refreshAddressDialog();
                     },
-                    icon: const Icon(Icons.clear),
+                    icon: const Icon(Icons.clear, semanticLabel: 'Clear'),
                   )
                 : null,
             onChanged: _handleAddressSearch,
@@ -1115,6 +1235,26 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
       double? longitude;
 
       if (_useWebPlaces) {
+        if (Env.googleMapsApiKey.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Google Maps API key is not configured. Please configure GOOGLE_MAPS_API_KEY.'),
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+          // Fallback to manual entry
+          setState(() {
+            _selectedPlaceId = prediction.placeId;
+            _selectedPlaceDescription = prediction.description;
+            _addressSearchController.text = prediction.description;
+            _addressPredictions = [];
+          });
+          _refreshAddressDialog();
+          return;
+        }
+
         final details = await PlacesWebService.placeDetails(
           prediction.placeId!,
         );
@@ -1248,7 +1388,13 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
       await _checkForExistingAddressMatch(prediction.placeId!);
       // Refresh again after async operations
       _refreshAddressDialog();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Error fetching place details: $e',
+        name: 'CaptureClaim',
+        error: e,
+        stackTrace: stackTrace,
+      );
       // On error, at least clear predictions and show the selected description
       setState(() {
         _selectedPlaceId = prediction.placeId;
@@ -1267,18 +1413,21 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
           ),
         );
       }
-      if (kDebugMode) {
-        print('Error selecting prediction: $e');
-      }
+      AppLogger.debug(
+        'Error selecting prediction: $e',
+        name: 'CaptureClaim',
+        error: e,
+      );
     }
   }
 
   String _buildStaticMapUrl(double lat, double lng) {
     // Validate API key
     if (Env.googleMapsApiKey.isEmpty) {
-      if (kDebugMode) {
-        print('Warning: Google Maps API key is empty. Static map will not load.');
-      }
+      AppLogger.debug(
+        'Warning: Google Maps API key is empty. Static map will not load.',
+        name: 'CaptureClaimScreen',
+      );
       // Return empty string - the error builder will handle it
       return '';
     }
@@ -1295,12 +1444,10 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
     
     final url = uri.toString();
     
-    if (kDebugMode) {
-      print('Built static map URL for coordinates: $lat, $lng');
-      print('URL length: ${url.length}');
-      print('API key present: ${Env.googleMapsApiKey.isNotEmpty}');
-      // Don't print full URL with API key for security, but log that it was built
-    }
+    AppLogger.debug(
+      'Built static map URL for coordinates: $lat, $lng. URL length: ${url.length}, API key present: ${Env.googleMapsApiKey.isNotEmpty}',
+      name: 'CaptureClaimScreen',
+    );
     
     return url;
   }

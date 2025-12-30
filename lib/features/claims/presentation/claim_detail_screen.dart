@@ -3,11 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/errors/domain_error.dart';
 import '../../../core/strings/app_strings.dart';
 import '../../../core/theme/design_tokens.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/widgets/glass_badge.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_empty_state.dart';
+import '../../../core/widgets/glass_error_state.dart';
+import '../../../core/widgets/glass_dialog.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../../../domain/models/claim.dart';
 import '../../../domain/models/claim_item.dart';
 import '../../../domain/models/claim_status_change.dart';
@@ -59,7 +65,7 @@ class ClaimDetailScreen extends ConsumerWidget {
         : titleParts.join(' • ');
 
     Future<void> logContactAttempt(Claim detail) async {
-      final input = await showDialog<ContactAttemptInput>(
+      final input = await showGlassDialog<ContactAttemptInput>(
         context: context,
         builder: (context) => const _ContactAttemptDialog(),
       );
@@ -81,7 +87,7 @@ class ClaimDetailScreen extends ConsumerWidget {
     }
 
     Future<void> changeStatus(Claim detail) async {
-      final result = await showDialog<_ChangeStatusResult>(
+      final result = await showGlassDialog<_ChangeStatusResult>(
         context: context,
         builder: (context) => _ChangeStatusDialog(currentStatus: detail.status),
       );
@@ -128,7 +134,7 @@ class ClaimDetailScreen extends ConsumerWidget {
             labelColor: Theme.of(context).colorScheme.onPrimary,
             unselectedLabelColor:
                 Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.65),
-            indicatorColor: Colors.white,
+            indicatorColor: DesignTokens.textPrimary(Theme.of(context).brightness),
             indicatorWeight: 3,
             tabs: const [
               Tab(text: 'Overview'),
@@ -163,8 +169,9 @@ class ClaimDetailScreen extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => _DetailError(
-              message: error.toString(),
+            error: (error, _) => GlassErrorState(
+              title: 'Unable to load claim',
+              message: getUserFriendlyErrorMessage(error, isDebugMode: kDebugMode),
               onRetry: notifier.refresh,
             ),
           ),
@@ -439,7 +446,7 @@ class _OverviewTab extends StatelessWidget {
   }
 
   void _showTechnicianDialog(BuildContext context, Claim detail) {
-    showDialog(
+    showGlassDialog(
       context: context,
       builder: (context) => _TechnicianAppointmentDialog(
         claimId: claimId,
@@ -460,7 +467,10 @@ class _ItemsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const _EmptyState(message: 'No items captured yet.');
+      return const GlassEmptyState(
+        icon: Icons.inventory_2_outlined,
+        title: 'No items captured yet',
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(DesignTokens.spaceM),
@@ -496,7 +506,10 @@ class _ContactAttemptsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (attempts.isEmpty) {
-      return const _EmptyState(message: 'No contact attempts logged yet.');
+      return const GlassEmptyState(
+        icon: Icons.phone_outlined,
+        title: 'No contact attempts logged yet',
+      );
     }
     return ListView.separated(
       padding: const EdgeInsets.all(DesignTokens.spaceM),
@@ -533,7 +546,10 @@ class _StatusHistoryTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (history.isEmpty) {
-      return const _EmptyState(message: 'No status changes yet.');
+      return const GlassEmptyState(
+        icon: Icons.history_outlined,
+        title: 'No status changes yet',
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(DesignTokens.spaceM),
@@ -586,7 +602,7 @@ class _KeyValueRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: theme.textTheme.bodyMedium,
+              style: theme.textTheme.bodyMedium?.monospace(),
             ),
           ),
         ],
@@ -595,68 +611,6 @@ class _KeyValueRow extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.inbox_outlined, size: 48),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DetailError extends StatelessWidget {
-  const _DetailError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline,
-                size: 48, color: Theme.of(context).colorScheme.error),
-            const SizedBox(height: 12),
-            Text(
-              'Unable to load claim',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ContactAttemptDialog extends StatefulWidget {
   const _ContactAttemptDialog();
@@ -680,7 +634,7 @@ class _ContactAttemptDialogState extends State<_ContactAttemptDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return GlassDialog(
       title: const Text('Log contact attempt'),
       content: Form(
         key: _formKey,
@@ -689,7 +643,10 @@ class _ContactAttemptDialogState extends State<_ContactAttemptDialog> {
           children: [
             DropdownButtonFormField<ContactMethod>(
               initialValue: _method,
-              decoration: const InputDecoration(labelText: 'Method'),
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Method',
+              ),
               items: ContactMethod.values
                   .map(
                     (method) => DropdownMenuItem(
@@ -707,7 +664,10 @@ class _ContactAttemptDialogState extends State<_ContactAttemptDialog> {
             const SizedBox(height: 12),
             DropdownButtonFormField<ContactOutcome>(
               initialValue: _outcome,
-              decoration: const InputDecoration(labelText: 'Outcome'),
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Outcome',
+              ),
               items: ContactOutcome.values
                   .map(
                     (outcome) => DropdownMenuItem(
@@ -723,12 +683,11 @@ class _ContactAttemptDialogState extends State<_ContactAttemptDialog> {
               },
             ),
             const SizedBox(height: 12),
-            TextFormField(
+            GlassInput.textForm(
+              context: context,
               controller: _notesController,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                hintText: 'Outcome notes or next steps',
-              ),
+              label: 'Notes',
+              hint: 'Outcome notes or next steps',
               maxLines: 3,
             ),
             const SizedBox(height: 12),
@@ -742,11 +701,11 @@ class _ContactAttemptDialogState extends State<_ContactAttemptDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GlassButton.primary(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               Navigator.of(context).pop(
@@ -796,14 +755,17 @@ class _ChangeStatusDialogState extends State<_ChangeStatusDialog> {
   @override
   Widget build(BuildContext context) {
     final options = ClaimStatus.values.toList(growable: false);
-    return AlertDialog(
+    return GlassDialog(
       title: const Text('Change status'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           DropdownButtonFormField<ClaimStatus>(
             initialValue: _selectedStatus,
-            decoration: const InputDecoration(labelText: 'New status'),
+            decoration: GlassInput.decoration(
+              context: context,
+              label: 'New status',
+            ),
             items: options
                 .map(
                   (status) => DropdownMenuItem(
@@ -819,22 +781,21 @@ class _ChangeStatusDialogState extends State<_ChangeStatusDialog> {
             },
           ),
           const SizedBox(height: 12),
-          TextField(
+          GlassInput.text(
+            context: context,
             controller: _reasonController,
-            decoration: const InputDecoration(
-              labelText: 'Reason (optional)',
-              hintText: 'Provide context for this change',
-            ),
+            label: 'Reason (optional)',
+            hint: 'Provide context for this change',
             maxLines: 2,
           ),
         ],
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GlassButton.primary(
           onPressed: () {
             Navigator.of(context).pop(
               _ChangeStatusResult(
@@ -893,7 +854,7 @@ class _TechnicianAppointmentDialogState extends ConsumerState<_TechnicianAppoint
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return GlassDialog(
       title: const Text('Assign Technician & Appointment'),
       content: SizedBox(
         width: 400,
@@ -929,11 +890,11 @@ class _TechnicianAppointmentDialogState extends ConsumerState<_TechnicianAppoint
         ),
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        TextButton(
+        GlassButton.primary(
           onPressed: () async {
             await widget.notifier.updateTechnician(
               claimId: widget.claimId,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_dialog.dart';
 import '../../../core/widgets/glass_input.dart';
 import '../../../core/errors/domain_error.dart';
 import '../../../domain/models/service_provider.dart';
@@ -63,7 +64,7 @@ class _AdminServiceProvidersScreenState
 
   Future<void> _showEditor(BuildContext context,
       {ServiceProvider? provider}) async {
-    final result = await showDialog<_ServiceProviderPayload>(
+    final result = await showGlassDialog<_ServiceProviderPayload>(
       context: context,
       builder: (context) => _ServiceProviderDialog(provider: provider),
     );
@@ -251,14 +252,14 @@ class _ProviderRow extends ConsumerWidget {
     }
 
     Future<void> remove() async {
-      final confirm = await showDialog<bool>(
+      final confirm = await showGlassDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => GlassDialog(
           title: const Text('Remove provider'),
           content: Text(
               'Remove ${provider.companyName}? Claims will need to reference another provider.'),
           actions: [
-            TextButton(
+            GlassButton.ghost(
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
@@ -388,7 +389,7 @@ class _ServiceProviderDialogState extends State<_ServiceProviderDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.provider != null;
-    return AlertDialog(
+    return GlassDialog(
       title: Text(isEditing ? 'Edit provider' : 'Add provider'),
       content: SizedBox(
         width: 480,
@@ -444,7 +445,7 @@ class _ServiceProviderDialogState extends State<_ServiceProviderDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),

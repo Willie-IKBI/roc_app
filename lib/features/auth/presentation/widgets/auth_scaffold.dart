@@ -1,4 +1,10 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
+import '../../../../core/theme/design_tokens.dart';
+import '../../../../core/widgets/ambient_glow.dart';
+import '../../../../core/widgets/glass_card.dart';
 
 class AuthScaffold extends StatelessWidget {
   const AuthScaffold({
@@ -27,18 +33,14 @@ class AuthScaffold extends StatelessWidget {
                     const SizedBox(height: 32),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 420),
-                      child: Material(
-                        color: theme.colorScheme.surface.withValues(alpha: 0.94),
-                        elevation: 16,
-                        borderRadius: BorderRadius.circular(28),
-                        shadowColor: Colors.black.withValues(alpha: 0.4),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 36,
-                          ),
-                          child: child,
+                      child: GlassCard(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 36,
                         ),
+                        borderRadius: BorderRadius.circular(DesignTokens.radiusLarge),
+                        blurSigma: DesignTokens.blurLarge,
+                        child: child,
                       ),
                     ),
                   ],
@@ -117,26 +119,28 @@ class _AuthBackground extends StatelessWidget {
         ),
       ),
       child: Stack(
-        children: const [
-          Positioned.fill(
+        children: [
+          const Positioned.fill(
             child: CustomPaint(
               painter: _DiagonalStripesPainter(),
             ),
           ),
-          Positioned(
+          AmbientGlow(
+            radius: 320,
+            color: DesignTokens.primaryRed.withValues(alpha: 0.2),
             top: -180,
             right: -140,
-            child: _HaloGlow(radius: 320, color: Color(0x33D8232A)),
           ),
-          Positioned(
+          AmbientGlow(
+            radius: 360,
+            color: const Color(0x331E88F5), // Blue/violet glow
             bottom: -220,
             left: -160,
-            child: _HaloGlow(radius: 360, color: Color(0x331E88F5)),
           ),
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: Colors.black54,
+                color: DesignTokens.canvasDark.withValues(alpha: 0.7),
               ),
             ),
           ),
@@ -174,33 +178,5 @@ class _DiagonalStripesPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _HaloGlow extends StatelessWidget {
-  const _HaloGlow({
-    required this.radius,
-    required this.color,
-  });
-
-  final double radius;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: radius,
-        height: radius,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              color,
-              color.withValues(alpha: 0.0),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 

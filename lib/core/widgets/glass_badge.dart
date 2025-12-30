@@ -56,6 +56,12 @@ class GlassBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final brightness = theme.brightness;
+    final isDark = brightness == Brightness.dark;
+    
+    // Increase alpha values in dark mode for better visibility
+    final backgroundAlpha = isDark ? 0.4 : 0.1;
+    final borderAlpha = isDark ? 0.65 : 0.2;
 
     return Semantics(
       label: semanticLabel ?? label,
@@ -65,10 +71,10 @@ class GlassBadge extends StatelessWidget {
           vertical: DesignTokens.spaceS,
         ),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
+          color: color.withValues(alpha: backgroundAlpha),
           borderRadius: BorderRadius.circular(DesignTokens.radiusPill),
           border: Border.all(
-            color: color.withValues(alpha: 0.2),
+            color: color.withValues(alpha: borderAlpha),
             width: 1,
           ),
         ),
@@ -78,6 +84,8 @@ class GlassBadge extends StatelessWidget {
             color: color,
             fontWeight: FontWeight.w500,
           ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
       ),
     );

@@ -49,6 +49,7 @@ dependencies:
   js: ^0.7.0
   google_fonts: ^4.0.4
   shared_preferences: ^2.3.3
+  http: ^0.13.6
 
 dev_dependencies:
   flutter_test:

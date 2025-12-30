@@ -67,8 +67,10 @@ class AddressRow {
 
   final String? country;
 
+  @JsonKey(name: 'lat')
   final double? latitude;
 
+  @JsonKey(name: 'lng')
   final double? longitude;
 
   @JsonKey(name: 'google_place_id')

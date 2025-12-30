@@ -5,6 +5,8 @@ import '../../../core/errors/domain_error.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_dialog.dart';
+import '../../../core/widgets/glass_error_state.dart';
 import '../../../core/widgets/glass_input.dart';
 import '../../../domain/models/user_account.dart';
 import '../../../domain/value_objects/role_type.dart';
@@ -42,7 +44,8 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
             onSearchChanged: () => setState(() {}),
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _ErrorState(
+          error: (error, _) => GlassErrorState(
+            title: 'Unable to load users',
             message: error.toString(),
             onRetry: () =>
                 ref.read(adminUsersControllerProvider.notifier).refresh(),
@@ -65,7 +68,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
 
   Future<void> _inviteUser(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    final result = await showDialog<_InvitePayload>(
+    final result = await showGlassDialog<_InvitePayload>(
       context: context,
       builder: (context) => const _InviteDialog(),
     );
@@ -379,7 +382,7 @@ class _UserRow extends ConsumerWidget {
     }
 
     Future<void> editDetails() async {
-      final payload = await showDialog<_UserDetailsPayload>(
+      final payload = await showGlassDialog<_UserDetailsPayload>(
         context: context,
         builder: (context) => _UserDetailsDialog(user: user),
       );
@@ -557,46 +560,6 @@ class _UserStatusToggle extends StatelessWidget {
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Unable to load users',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            GlassButton.primary(
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _AutoProvisionBanner extends StatelessWidget {
   const _AutoProvisionBanner({required this.incompleteCount});
@@ -670,7 +633,7 @@ class _UserDetailsDialogState extends State<_UserDetailsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return GlassDialog(
       title: const Text('Edit user details'),
       content: SizedBox(
         width: 420,
@@ -704,7 +667,7 @@ class _UserDetailsDialogState extends State<_UserDetailsDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
@@ -757,7 +720,7 @@ class _InviteDialogState extends State<_InviteDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return GlassDialog(
       title: const Text('Invite user'),
       content: Form(
         key: _formKey,
@@ -809,7 +772,7 @@ class _InviteDialogState extends State<_InviteDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),

@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:js/js.dart';
 
+import '../logging/logger.dart';
+
 @JS('rocMapsAPI')
 external RocMapsAPI get rocMapsAPI;
 
@@ -137,11 +139,10 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
         }
         
         if (!googleMapsAvailable) {
-          if (kDebugMode) {
-            print('Google Maps API not available after wait, skipping map initialization');
-            print('Please ensure Maps JavaScript API is enabled and API key is correct');
-            print('rocMapsAPI helper may not be available');
-          }
+          AppLogger.debug(
+            'Google Maps API not available after wait, skipping map initialization. Please ensure Maps JavaScript API is enabled and API key is correct. rocMapsAPI helper may not be available',
+            name: 'InteractiveMapWidget',
+          );
           return;
         }
 

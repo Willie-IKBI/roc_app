@@ -33,6 +33,31 @@ TextStyle _safeGoogleFont({
   }
 }
 
+/// Safe wrapper for GoogleFonts.firaCode() that falls back to system monospace on error.
+/// Used for IDs, dates, numbers, and other technical data.
+TextStyle _safeFiraCode({
+  required FontWeight fontWeight,
+  required Color color,
+  double? letterSpacing,
+}) {
+  try {
+    return GoogleFonts.firaCode(
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: letterSpacing,
+    );
+  } catch (e) {
+    // Fallback to system monospace if Google Fonts fails to load
+    return TextStyle(
+      fontFamily: 'Fira Code',
+      fontFamilyFallback: ['monospace'],
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: letterSpacing,
+    );
+  }
+}
+
 /// Provides the current ThemeData based on the user's theme preference.
 /// 
 /// Watches ThemePreferenceProvider and returns the appropriate light or dark

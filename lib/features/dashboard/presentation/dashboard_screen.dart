@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/design_tokens.dart';
 import '../../../core/widgets/ambient_glow.dart';
+import '../../../core/widgets/error_boundary.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_empty_state.dart';
@@ -21,36 +22,38 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dashboardState = ref.watch(dashboardControllerProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Claims Ops Command Center'),
-        actions: [
-          IconButton(
-            tooltip: 'My profile',
-            onPressed: () => context.pushNamed('profile'),
-            icon: const Icon(Icons.person_outline),
-          ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: () =>
-                ref.read(dashboardControllerProvider.notifier).refresh(),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: dashboardState.when(
-          data: (data) => _DashboardContent(
-            state: data,
-            onRefresh: () =>
-                ref.read(dashboardControllerProvider.notifier).refresh(),
-          ),
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stackTrace) => GlassErrorState(
-            title: 'Could not load dashboard',
-            message: error.toString(),
-            onRetry: () =>
-                ref.read(dashboardControllerProvider.notifier).refresh(),
+    return ErrorBoundary(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Claims Ops Command Center'),
+          actions: [
+            IconButton(
+              tooltip: 'My profile',
+              onPressed: () => context.pushNamed('profile'),
+              icon: const Icon(Icons.person_outline, semanticLabel: 'My profile'),
+            ),
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: () =>
+                  ref.read(dashboardControllerProvider.notifier).refresh(),
+              icon: const Icon(Icons.refresh, semanticLabel: 'Refresh'),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: dashboardState.when(
+            data: (data) => _DashboardContent(
+              state: data,
+              onRefresh: () =>
+                  ref.read(dashboardControllerProvider.notifier).refresh(),
+            ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, stackTrace) => GlassErrorState(
+              title: 'Could not load dashboard',
+              message: error.toString(),
+              onRetry: () =>
+                  ref.read(dashboardControllerProvider.notifier).refresh(),
+            ),
           ),
         ),
       ),
@@ -171,7 +174,7 @@ class _QuickActionsBar extends StatelessWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.add_circle_outline),
+                  Icon(Icons.add_circle_outline, semanticLabel: 'Capture claim'),
                   SizedBox(width: DesignTokens.spaceS),
                   Text('Capture claim'),
                 ],
@@ -182,7 +185,7 @@ class _QuickActionsBar extends StatelessWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.list_alt_outlined),
+                  Icon(Icons.list_alt_outlined, semanticLabel: 'View queue'),
                   SizedBox(width: DesignTokens.spaceS),
                   Text('View queue'),
                 ],
@@ -591,10 +594,22 @@ class _FocusClaimTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${claim.claimNumber} • ${claim.clientFullName}',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: claim.claimNumber,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          )?.monospace(),
+                        ),
+                        TextSpan(
+                          text: ' • ${claim.clientFullName}',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -849,7 +864,7 @@ class _TimelineTile extends StatelessWidget {
                       claim.claimNumber,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
-                      ),
+                      )?.monospace(),
                     ),
                     const SizedBox(width: 8),
                     Text(

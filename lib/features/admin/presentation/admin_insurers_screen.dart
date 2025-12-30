@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_dialog.dart';
 import '../../../core/widgets/glass_input.dart';
 import '../../../core/utils/validators.dart';
 import '../../../domain/models/insurer.dart';
@@ -196,7 +197,7 @@ class _AdminInsurersScreenState extends ConsumerState<AdminInsurersScreen> {
 
   Future<void> _showCreateDialog(BuildContext context) async {
     final notifier = ref.read(adminInsurersControllerProvider.notifier);
-    final result = await showDialog<_InsurerInput>(
+    final result = await showGlassDialog<_InsurerInput>(
       context: context,
       builder: (context) => const _InsurerDialog(title: 'Add insurer'),
     );
@@ -216,7 +217,7 @@ class _AdminInsurersScreenState extends ConsumerState<AdminInsurersScreen> {
 
   Future<void> _showEditDialog(BuildContext context, Insurer insurer) async {
     final notifier = ref.read(adminInsurersControllerProvider.notifier);
-    final result = await showDialog<_InsurerInput>(
+    final result = await showGlassDialog<_InsurerInput>(
       context: context,
       builder: (context) => _InsurerDialog(
         title: 'Edit insurer',
@@ -241,15 +242,15 @@ class _AdminInsurersScreenState extends ConsumerState<AdminInsurersScreen> {
   }
 
   Future<void> _confirmDelete(BuildContext context, Insurer insurer) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showGlassDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassDialog(
         title: const Text('Delete insurer'),
         content: Text(
           'Are you sure you want to remove ${insurer.name}? This cannot be undone.',
         ),
         actions: [
-          TextButton(
+          GlassButton.ghost(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Cancel'),
           ),
@@ -514,7 +515,7 @@ class _InsurerDialogState extends State<_InsurerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return GlassDialog(
       title: Text(widget.title),
       content: Form(
         key: _formKey,
@@ -566,11 +567,11 @@ class _InsurerDialogState extends State<_InsurerDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GlassButton.primary(
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
             Navigator.of(context).pop(

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_dialog.dart';
 import '../../../core/widgets/glass_input.dart';
 import '../../../core/errors/domain_error.dart';
 import '../../../domain/models/brand.dart';
@@ -60,7 +61,7 @@ class _AdminBrandsScreenState extends ConsumerState<AdminBrandsScreen> {
   }
 
   Future<void> _showEditor(BuildContext context, {Brand? brand}) async {
-    final result = await showDialog<String>(
+    final result = await showGlassDialog<String>(
       context: context,
       builder: (context) => _BrandDialog(brand: brand),
     );
@@ -226,13 +227,13 @@ class _BrandRow extends ConsumerWidget {
     }
 
     Future<void> remove() async {
-      final confirm = await showDialog<bool>(
+      final confirm = await showGlassDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => GlassDialog(
           title: const Text('Remove brand'),
           content: Text('Remove ${brand.name}?'),
           actions: [
-            TextButton(
+            GlassButton.ghost(
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
@@ -322,7 +323,7 @@ class _BrandDialogState extends State<_BrandDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.brand != null;
-    return AlertDialog(
+    return GlassDialog(
       title: Text(isEditing ? 'Edit brand' : 'Add brand'),
       content: SizedBox(
         width: 420,
@@ -343,7 +344,7 @@ class _BrandDialogState extends State<_BrandDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),

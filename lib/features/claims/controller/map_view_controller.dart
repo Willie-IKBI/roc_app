@@ -12,6 +12,7 @@ class ClaimMapMarker {
     required this.status,
     required this.latitude,
     required this.longitude,
+    this.technicianId,
     this.technicianName,
     this.clientName,
     this.address,
@@ -22,9 +23,12 @@ class ClaimMapMarker {
   final ClaimStatus status;
   final double latitude;
   final double longitude;
+  final String? technicianId;
   final String? technicianName;
   final String? clientName;
   final String? address;
+
+  bool get hasTechnician => technicianId != null && technicianName != null;
 }
 
 @riverpod
@@ -32,6 +36,7 @@ Future<List<ClaimMapMarker>> claimMapMarkers(
   Ref ref, {
   ClaimStatus? statusFilter,
   String? technicianId,
+  bool? technicianAssignmentFilter,
 }) async {
   final client = ref.watch(supabaseClientProvider);
   
@@ -72,6 +77,18 @@ Future<List<ClaimMapMarker>> claimMapMarkers(
       query = query.eq('technician_id', technicianId);
     }
 
+    // Filter by technician assignment status if provided
+    if (technicianAssignmentFilter != null) {
+      if (technicianAssignmentFilter == true) {
+        // Only assigned claims
+        query = query.not('technician_id', 'is', null);
+      } else {
+        // Only unassigned claims - filter for null technician_id
+        // Postgrest uses isFilter for checking null values
+        query = query.isFilter('technician_id', null);
+      }
+    }
+
     final response = await query;
 
     final markers = <ClaimMapMarker>[];
@@ -102,12 +119,14 @@ Future<List<ClaimMapMarker>> claimMapMarkers(
         province,
       ].where((p) => p.isNotEmpty).join(', ');
 
+      final technicianIdValue = row['technician_id'] as String?;
       markers.add(ClaimMapMarker(
         claimId: row['id'] as String,
         claimNumber: row['claim_number'] as String,
         status: ClaimStatus.fromJson(row['status'] as String),
         latitude: latitude,
         longitude: longitude,
+        technicianId: technicianIdValue,
         technicianName: technician?['full_name'] as String?,
         clientName: clientData != null
             ? '${clientData['first_name'] ?? ''} ${clientData['last_name'] ?? ''}'.trim()

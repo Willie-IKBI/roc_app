@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +27,61 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  /// Opens the admin drawer with proper error handling and logging.
+  void _openAdminDrawer(BuildContext context) {
+    final drawerItems = _getDrawerItems();
+    AppLogger.debug(
+      'Attempting to open admin drawer. Drawer items: ${drawerItems.length}',
+      name: 'AppShell',
+    );
+    
+    try {
+      final scaffoldState = _scaffoldKey.currentState;
+      if (scaffoldState != null) {
+        scaffoldState.openEndDrawer();
+        AppLogger.debug(
+          'Admin drawer opened successfully via GlobalKey',
+          name: 'AppShell',
+        );
+        return;
+      }
+      
+      AppLogger.warn(
+        'Scaffold state is null, trying context fallback',
+        name: 'AppShell',
+      );
+      
+      // Fallback: try using context directly
+      try {
+        Scaffold.of(context).openEndDrawer();
+        AppLogger.debug(
+          'Admin drawer opened successfully via context fallback',
+          name: 'AppShell',
+        );
+      } catch (e, stackTrace) {
+        AppLogger.error(
+          'Failed to open admin drawer via context fallback',
+          name: 'AppShell',
+          error: e,
+          stackTrace: stackTrace,
+        );
+      }
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'Failed to open admin drawer',
+        name: 'AppShell',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  /// Gets the drawer items for the current role.
+  List<_NavItem> _getDrawerItems() {
+    final navItems = _navItemsForRole(widget.role);
+    return navItems.where((item) => item.adminOnly).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final router = GoRouter.of(context);
@@ -33,7 +89,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final location = state.uri.path;
     final navItems = _navItemsForRole(widget.role);
     final bottomItems = navItems.where((item) => !item.adminOnly).toList();
-    final drawerItems = navItems.where((item) => item.adminOnly).toList();
+    final drawerItems = _getDrawerItems();
 
     Future<void> signOut() async {
       final client = ref.read(supabaseClientProvider);
@@ -135,6 +191,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   Icons.person_outline,
                   size: 20,
                   color: theme.colorScheme.onSurface,
+                  semanticLabel: 'User profile',
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -154,6 +211,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   isDark ? Icons.dark_mode : Icons.light_mode,
                   size: 20,
                   color: theme.colorScheme.onSurface,
+                  semanticLabel: isDark ? 'Switch to light mode' : 'Switch to dark mode',
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -173,6 +231,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   Icons.logout,
                   size: 20,
                   color: theme.colorScheme.onSurface,
+                  semanticLabel: 'Logout',
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -267,30 +326,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                       'Admin button clicked. Drawer items: ${drawerItems.length}',
                       name: 'AppShell',
                     );
-                    try {
-                      final scaffoldState = _scaffoldKey.currentState;
-                      if (scaffoldState != null) {
-                        scaffoldState.openEndDrawer();
-                        AppLogger.debug(
-                          'Admin drawer opened successfully',
-                          name: 'AppShell',
-                        );
-                      } else {
-                        AppLogger.warn(
-                          'Scaffold state is null, trying context fallback',
-                          name: 'AppShell',
-                        );
-                        // Fallback: try using context if GlobalKey fails
-                        Scaffold.of(context).openEndDrawer();
-                      }
-                    } catch (e, stackTrace) {
-                      AppLogger.error(
-                        'Failed to open admin drawer',
-                        name: 'AppShell',
-                        error: e,
-                        stackTrace: stackTrace,
-                      );
-                    }
+                    _openAdminDrawer(context);
                   },
                   semanticLabel: 'Open admin menu',
                   child: Row(
@@ -317,7 +353,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         ],
       ),
       endDrawer: drawerItems.isNotEmpty
-          ? NavigationDrawer(
+          ? _GlassNavigationDrawer(
+              drawerItems: drawerItems,
+              selectedLocation: location,
               onDestinationSelected: (index) {
                 if (index < 0 || index >= drawerItems.length) {
                   AppLogger.warn(
@@ -334,27 +372,6 @@ class _AppShellState extends ConsumerState<AppShell> {
                 Navigator.of(context).pop();
                 goTo(item.route);
               },
-              selectedIndex: drawerItems.indexWhere(
-                (item) => item.matches(location),
-              ),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Text(
-                    'Admin',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                for (final item in drawerItems)
-                  NavigationDrawerDestination(
-                    icon: Icon(item.icon, semanticLabel: item.label),
-                    label: Text(item.label),
-                    selectedIcon: Icon(
-                      item.selectedIcon ?? item.icon,
-                      semanticLabel: item.label,
-                    ),
-                  ),
-              ],
             )
           : null,
     );
@@ -382,6 +399,20 @@ class _AppShellState extends ConsumerState<AppShell> {
         icon: Icons.map_outlined,
         selectedIcon: Icons.map,
         matchPrefixes: ['/claims/map'],
+      ),
+      const _NavItem(
+        label: 'Scheduling',
+        route: '/scheduling',
+        icon: Icons.calendar_today_outlined,
+        selectedIcon: Icons.calendar_today,
+        matchPrefixes: ['/scheduling'],
+      ),
+      const _NavItem(
+        label: 'Assignments',
+        route: '/assignments',
+        icon: Icons.assignment_ind_outlined,
+        selectedIcon: Icons.assignment_ind,
+        matchPrefixes: ['/assignments'],
       ),
       const _NavItem(
         label: 'Reports',
@@ -675,6 +706,183 @@ class _ConsoleDestination extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A glassmorphism-styled navigation drawer for admin items.
+class _GlassNavigationDrawer extends StatelessWidget {
+  const _GlassNavigationDrawer({
+    required this.drawerItems,
+    required this.selectedLocation,
+    required this.onDestinationSelected,
+  });
+
+  final List<_NavItem> drawerItems;
+  final String selectedLocation;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final brightness = theme.brightness;
+    final selectedIndex = drawerItems.indexWhere(
+      (item) => item.matches(selectedLocation),
+    );
+
+    return Drawer(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: DesignTokens.glassBase(brightness).withValues(alpha: 0.95),
+          border: Border(
+            right: BorderSide(
+              color: DesignTokens.borderSubtle(brightness),
+              width: 1,
+            ),
+          ),
+        ),
+        child: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: DesignTokens.blurLarge,
+              sigmaY: DesignTokens.blurLarge,
+            ),
+            child: SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      DesignTokens.spaceL,
+                      DesignTokens.spaceL,
+                      DesignTokens.spaceL,
+                      DesignTokens.spaceM,
+                    ),
+                    child: Text(
+                      'Admin',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: DesignTokens.textPrimary(brightness),
+                      ),
+                    ),
+                  ),
+                  Divider(
+                    height: 1,
+                    indent: DesignTokens.spaceL,
+                    endIndent: DesignTokens.spaceL,
+                    color: DesignTokens.borderSubtle(brightness).withValues(alpha: 0.2),
+                  ),
+                  // Drawer items
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: DesignTokens.spaceS,
+                      ),
+                      children: [
+                        for (var i = 0; i < drawerItems.length; i++)
+                          _DrawerItem(
+                            item: drawerItems[i],
+                            isSelected: i == selectedIndex,
+                            onTap: () => onDestinationSelected(i),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerItem extends StatelessWidget {
+  const _DrawerItem({
+    required this.item,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final _NavItem item;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final brightness = theme.brightness;
+
+    return Semantics(
+      label: item.label,
+      button: true,
+      selected: isSelected,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.symmetric(
+              horizontal: DesignTokens.spaceM,
+              vertical: DesignTokens.spaceXS,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: DesignTokens.spaceM,
+              vertical: DesignTokens.spaceS,
+            ),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? DesignTokens.glassActive(brightness)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(DesignTokens.radiusMedium),
+              border: isSelected
+                  ? Border.all(
+                      color: DesignTokens.primaryRed.withValues(alpha: 0.3),
+                      width: 1,
+                    )
+                  : null,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isSelected
+                      ? (item.selectedIcon ?? item.icon)
+                      : item.icon,
+                  color: isSelected
+                      ? DesignTokens.textPrimary(brightness)
+                      : DesignTokens.textSecondary(brightness),
+                  semanticLabel: item.label,
+                ),
+                const SizedBox(width: DesignTokens.spaceM),
+                Expanded(
+                  child: Text(
+                    item.label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: isSelected
+                          ? DesignTokens.textPrimary(brightness)
+                          : DesignTokens.textSecondary(brightness),
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(left: DesignTokens.spaceS),
+                    decoration: BoxDecoration(
+                      color: DesignTokens.primaryRed,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

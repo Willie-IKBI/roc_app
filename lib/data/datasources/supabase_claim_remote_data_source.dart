@@ -67,8 +67,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
       final record = Map<String, dynamic>.from(data as Map);
       return Result.ok(ClaimRow.fromJson(record));
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch claim: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching claim: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -88,8 +99,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
           .toList(growable: false);
       return Result.ok(items);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch claim items: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching claim items: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -113,8 +135,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
               ),
       );
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch latest contact: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching latest contact: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -136,8 +169,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
           .toList(growable: false);
       return Result.ok(attempts);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch contact attempts: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching contact attempts: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -159,8 +203,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
           .toList(growable: false);
       return Result.ok(history);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch status history: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching status history: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -177,8 +232,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
         ClientRow.fromJson(Map<String, dynamic>.from(data as Map)),
       );
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch client: $clientId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching client: $clientId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -188,15 +254,26 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
     try {
       final data = await _client
           .from('addresses')
-          .select('id, tenant_id, client_id, estate_id, google_place_id, unit_number, complex_or_estate, street, suburb, city, province, postal_code, country, latitude, longitude, notes, is_primary, created_at, updated_at, estate:estate_id(id, tenant_id, name, suburb, city, province, postal_code, created_at, updated_at)')
+          .select('id, tenant_id, client_id, estate_id, google_place_id, unit_number, complex_or_estate, street, suburb, city, province, postal_code, country, lat, lng, notes, is_primary, created_at, updated_at, estate:estate_id(id, tenant_id, name, suburb, city, province, postal_code, created_at, updated_at)')
           .eq('id', addressId)
           .single();
       return Result.ok(
         AddressRow.fromJson(Map<String, dynamic>.from(data as Map)),
       );
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch address: $addressId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching address: $addressId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -234,8 +311,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
 
       return const Result.ok(null);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to create contact attempt: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error creating contact attempt: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -277,8 +365,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
 
       return const Result.ok(null);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to update claim status: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error updating claim status: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -354,8 +453,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
 
       return Result.ok(record['id'] as String);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to create claim: ${draft.claimNumber}',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error creating claim: ${draft.claimNumber}',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -387,8 +497,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
       await _client.from('claim_items').insert(payload);
       return const Result.ok(null);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to create claim items: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error creating claim items: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -408,8 +529,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
           .maybeSingle();
       return Result.ok(data != null);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to check claim existence: $insurerId / $claimNumber',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error checking claim existence: $insurerId / $claimNumber',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -436,8 +568,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
           .single();
       return Result.ok(record['id'] as String);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to create client: ${input.firstName} ${input.lastName}',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error creating client: ${input.firstName} ${input.lastName}',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -478,8 +621,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
           .single();
       return Result.ok(record['id'] as String);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to create address: ${input.street}, ${input.city}',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error creating address: ${input.street}, ${input.city}',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -524,12 +678,28 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
               .limit(1)
               .maybeSingle();
           return Result.ok(existing?['id'] as String?);
-        } catch (_) {
+        } catch (lookupErr) {
+          AppLogger.error(
+            'Failed to lookup existing service provider: $company',
+            name: 'SupabaseClaimRemoteDataSource',
+            error: lookupErr,
+          );
           return Result.err(mapPostgrestException(err));
         }
       }
+      AppLogger.error(
+        'Failed to create service provider: ${input.companyName}',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error creating service provider: ${input.companyName}',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -550,8 +720,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
 
       return const Result.ok(null);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to update technician: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error updating technician: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -574,8 +755,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
 
       return const Result.ok(null);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to update appointment: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error updating appointment: $claimId',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }

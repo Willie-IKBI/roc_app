@@ -6,13 +6,43 @@ import '../theme/design_tokens.dart';
 /// Supports primary (red), secondary (ghost), and outlined variants.
 /// All buttons use pill-shaped (rounded-full) design.
 /// 
-/// Example:
+/// ## Variants
+/// 
+/// - **Primary**: Red background for primary actions
+/// - **Secondary**: Ghost/transparent for secondary actions
+/// - **Outlined**: Border-only style
+/// 
+/// ## Usage Examples
+/// 
 /// ```dart
+/// // Primary action button
 /// GlassButton.primary(
-///   onPressed: () {},
-///   child: Text('Click me'),
+///   onPressed: () => save(),
+///   semanticLabel: 'Save changes',
+///   child: const Text('Save'),
+/// )
+/// 
+/// // Secondary action
+/// GlassButton.secondary(
+///   onPressed: () => cancel(),
+///   child: const Text('Cancel'),
+/// )
+/// 
+/// // Icon button
+/// GlassButton.ghost(
+///   onPressed: () => edit(),
+///   semanticLabel: 'Edit item',
+///   padding: const EdgeInsets.all(DesignTokens.spaceS),
+///   child: const Icon(Icons.edit),
 /// )
 /// ```
+/// 
+/// ## Best Practices
+/// 
+/// - Always provide `semanticLabel` for icon-only buttons
+/// - Use primary for the main action, secondary/ghost for alternatives
+/// - Ensure touch targets are at least 48dp (use padding if needed)
+/// - Disable buttons by setting `onPressed: null`
 class GlassButton extends StatelessWidget {
   const GlassButton.primary({
     required this.onPressed,
@@ -85,6 +115,10 @@ class GlassButton extends StatelessWidget {
                   horizontal: DesignTokens.spaceL,
                   vertical: 14,
                 ),
+            constraints: const BoxConstraints(
+              minHeight: 48, // WCAG AA minimum touch target
+              minWidth: 48,
+            ),
             decoration: BoxDecoration(
               color: backgroundColor,
               borderRadius: BorderRadius.circular(DesignTokens.radiusPill),

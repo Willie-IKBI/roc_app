@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:js' as js;
 import 'package:flutter/foundation.dart';
 import 'package:js/js.dart';
 
@@ -32,12 +33,16 @@ class PlacesWebService {
     }
     
     if (apiKey.isEmpty) {
-      AppLogger.warn(
+      final error = StateError(
         'Google Maps API key is empty. Autocomplete will not work. '
         'Set GOOGLE_MAPS_API_KEY environment variable.',
-        name: 'PlacesWebService',
       );
-      return Future.value();
+      AppLogger.warn(
+        error.message,
+        name: 'PlacesWebService',
+        error: error,
+      );
+      return Future.error(error);
     }
     
     // Validate API key format
@@ -45,6 +50,14 @@ class PlacesWebService {
       AppLogger.warn(
         'Google Maps API key appears to be invalid (too short: ${apiKey.length} chars). '
         'Expected format: AIza... (typically 39 characters)',
+        name: 'PlacesWebService',
+      );
+    }
+    
+    // Validate API key starts with expected prefix
+    if (!apiKey.startsWith('AIza') && !apiKey.startsWith('GOCSPX')) {
+      AppLogger.warn(
+        'Google Maps API key format may be invalid. Expected to start with "AIza" or "GOCSPX".',
         name: 'PlacesWebService',
       );
     }
@@ -57,7 +70,20 @@ class PlacesWebService {
       );
       // Convert JS promise to Dart Future using dart:html
       final promise = rocPlaces.ensureLoaded(apiKey);
-      _promiseToFuture(promise).then((_) {
+      
+      // Add timeout to prevent hanging
+      final timeoutFuture = Future.delayed(const Duration(seconds: 15), () {
+        throw TimeoutException(
+          'Google Maps Places API loading timed out after 15 seconds. '
+          'Please check your internet connection and API key configuration.',
+          const Duration(seconds: 15),
+        );
+      });
+      
+      Future.any([
+        _promiseToFuture(promise),
+        timeoutFuture,
+      ]).then((_) {
         AppLogger.debug(
           'Google Maps Places API loaded successfully',
           name: 'PlacesWebService',

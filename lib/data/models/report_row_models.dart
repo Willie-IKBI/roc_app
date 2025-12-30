@@ -90,10 +90,7 @@ class StatusDistributionReportRow {
 
   StatusDistributionReport toDomain() {
     return StatusDistributionReport(
-      status: ClaimStatus.values.firstWhere(
-        (e) => e.name == status,
-        orElse: () => ClaimStatus.newClaim,
-      ),
+      status: ClaimStatus.fromJson(status),
       count: count,
       percentage: percentage,
       averageTimeInStatusHours: averageTimeInStatusHours,
@@ -128,10 +125,7 @@ class DamageCauseReportRow {
 
   DamageCauseReport toDomain() {
     return DamageCauseReport(
-      cause: DamageCause.values.firstWhere(
-        (e) => e.name == damageCause,
-        orElse: () => DamageCause.other,
-      ),
+      cause: DamageCause.fromJson(damageCause),
       count: count,
       percentage: percentage,
       averageResolutionTimeHours: averageResolutionTimeHours,
@@ -286,10 +280,7 @@ class InsurerDamageCauseRow {
     return InsurerDamageCauseBreakdown(
       insurerId: insurerId,
       insurerName: insurerName,
-      damageCause: DamageCause.values.firstWhere(
-        (e) => e.name == damageCause,
-        orElse: () => DamageCause.other,
-      ),
+      damageCause: DamageCause.fromJson(damageCause),
       claimCount: claimCount,
       percentage: percentage,
     );
@@ -329,10 +320,7 @@ class InsurerStatusBreakdownRow {
     return InsurerStatusBreakdown(
       insurerId: insurerId,
       insurerName: insurerName,
-      status: ClaimStatus.values.firstWhere(
-        (e) => e.name == status,
-        orElse: () => ClaimStatus.newClaim,
-      ),
+      status: ClaimStatus.fromJson(status),
       claimCount: claimCount,
       percentage: percentage,
     );

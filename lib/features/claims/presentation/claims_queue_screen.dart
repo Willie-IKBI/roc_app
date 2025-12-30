@@ -6,6 +6,7 @@ import '../../../core/theme/design_tokens.dart';
 import '../../../core/theme/roc_color_scheme.dart';
 import '../../../core/widgets/glass_badge.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_error_state.dart';
 import '../../claims/controller/queue_controller.dart';
 import '../../../domain/models/claim_summary.dart';
 import '../../../domain/value_objects/claim_enums.dart';
@@ -137,7 +138,8 @@ class _ClaimsQueueScreenState extends ConsumerState<ClaimsQueueScreen> {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _ErrorState(
+          error: (error, _) => GlassErrorState(
+            title: 'Unable to load claims',
             message: error.toString(),
             onRetry: () =>
                 ref.read(claimsQueueControllerProvider().notifier).refresh(),
@@ -250,7 +252,8 @@ class _ClaimCard extends StatelessWidget {
                   Text(
                     claim.claimNumber,
                     style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                        ?.copyWith(fontWeight: FontWeight.w700)
+                        ?.monospace(),
                   ),
                   GlassBadge.custom(
                     label: claim.status.label,
@@ -525,43 +528,4 @@ class _FiltersBar extends StatelessWidget {
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline,
-                size: 48, color: Theme.of(context).colorScheme.error),
-            const SizedBox(height: 12),
-            Text(
-              'Something went wrong',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 

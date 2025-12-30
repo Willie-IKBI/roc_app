@@ -10,6 +10,7 @@ import '../../../core/widgets/glass_error_state.dart';
 import '../../../core/widgets/glass_dialog.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_input.dart';
+import '../../../core/widgets/error_boundary.dart';
 import '../../../domain/value_objects/claim_enums.dart';
 import '../../claims/controller/map_view_controller.dart';
 import '../../claims/controller/technician_controller.dart';
@@ -25,7 +26,9 @@ class MapViewScreen extends ConsumerStatefulWidget {
 class _MapViewScreenState extends ConsumerState<MapViewScreen> {
   ClaimStatus? _statusFilter;
   String? _technicianFilter;
+  bool? _technicianAssignmentFilter; // null = all, true = assigned, false = unassigned
   bool _useInteractiveMap = true; // Toggle for interactive vs static map
+  bool _interactiveMapFailed = false; // Track if interactive map failed
 
   Color _statusColor(ClaimStatus status) {
     switch (status) {
@@ -103,6 +106,7 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
       claimMapMarkersProvider(
         statusFilter: _statusFilter,
         technicianId: _technicianFilter,
+        technicianAssignmentFilter: _technicianAssignmentFilter,
       ),
     );
     final techniciansAsync = ref.watch(techniciansProvider);
@@ -141,14 +145,58 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
 
           final mapUrl = _buildMapUrl(markers);
 
+          // Calculate summary statistics
+          final assignedCount = markers.where((m) => m.hasTechnician).length;
+          final unassignedCount = markers.length - assignedCount;
+
           return Column(
             children: [
+              // Summary cards
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  DesignTokens.spaceM,
+                  DesignTokens.spaceM,
+                  DesignTokens.spaceM,
+                  0,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryCard(
+                        icon: Icons.assignment,
+                        label: 'Total Claims',
+                        value: markers.length.toString(),
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: DesignTokens.spaceM),
+                    Expanded(
+                      child: _SummaryCard(
+                        icon: Icons.person,
+                        label: 'Assigned',
+                        value: assignedCount.toString(),
+                        color: Colors.green,
+                      ),
+                    ),
+                    const SizedBox(width: DesignTokens.spaceM),
+                    Expanded(
+                      child: _SummaryCard(
+                        icon: Icons.person_outline,
+                        label: 'Unassigned',
+                        value: unassignedCount.toString(),
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: DesignTokens.spaceM),
               // Filters bar
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                child: (_statusFilter != null || _technicianFilter != null)
+                child: (_statusFilter != null || _technicianFilter != null || _technicianAssignmentFilter != null)
                     ? GlassCard(
-                        key: ValueKey('${_statusFilter}_${_technicianFilter}'),
+                        key: ValueKey('${_statusFilter}_${_technicianFilter}_${_technicianAssignmentFilter}'),
                         margin: const EdgeInsets.all(DesignTokens.spaceM),
                         padding: const EdgeInsets.all(DesignTokens.spaceM),
                         child: Wrap(
@@ -233,6 +281,44 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                                 loading: () => const SizedBox.shrink(),
                                 error: (_, __) => const SizedBox.shrink(),
                               ),
+                            if (_technicianAssignmentFilter != null)
+                              GlassCard(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: DesignTokens.spaceS,
+                                  vertical: DesignTokens.spaceXS,
+                                ),
+                                borderRadius: BorderRadius.circular(DesignTokens.radiusLarge),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _technicianAssignmentFilter == true
+                                          ? Icons.person
+                                          : Icons.person_outline,
+                                      size: 16,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: DesignTokens.spaceXS),
+                                    Text(
+                                      _technicianAssignmentFilter == true
+                                          ? 'Assigned'
+                                          : 'Unassigned',
+                                      style: theme.textTheme.labelMedium,
+                                    ),
+                                    const SizedBox(width: DesignTokens.spaceXS),
+                                    InkWell(
+                                      onTap: () {
+                                        setState(() => _technicianAssignmentFilter = null);
+                                      },
+                                      child: Icon(
+                                        Icons.close,
+                                        size: 16,
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                           ],
                         ),
                       )
@@ -246,19 +332,87 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                     Positioned.fill(
                       child: Padding(
                         padding: const EdgeInsets.all(DesignTokens.spaceM),
-                        child: _useInteractiveMap && Env.googleMapsApiKey.isNotEmpty
-                            ? GlassCard(
-                                padding: EdgeInsets.zero,
-                                child: InteractiveClaimsMapWidget(
-                                  markers: markers,
-                                  onMarkerClick: (claimId) {
-                                    context.push('/claims/$claimId');
-                                  },
-                                  height: double.infinity,
-                                  initialZoom: 6,
-                                  initialCenterLat: -29.0,
-                                  initialCenterLng: 24.0,
+                        child: _useInteractiveMap && 
+                                Env.googleMapsApiKey.isNotEmpty && 
+                                !_interactiveMapFailed
+                            ? ErrorBoundary(
+                                child: GlassCard(
+                                  padding: EdgeInsets.zero,
+                                  child: InteractiveClaimsMapWidget(
+                                    markers: markers,
+                                    onMarkerClick: (claimId) {
+                                      context.push('/claims/$claimId');
+                                    },
+                                    height: double.infinity,
+                                    initialZoom: 6,
+                                    initialCenterLat: -29.0,
+                                    initialCenterLng: 24.0,
+                                  ),
                                 ),
+                                onError: (error, stackTrace) {
+                                  // If interactive map fails, fallback to static map
+                                  if (mounted) {
+                                    setState(() {
+                                      _interactiveMapFailed = true;
+                                    });
+                                  }
+                                },
+                                fallback: (error, stackTrace) {
+                                  // Show static map as fallback
+                                  return GlassCard(
+                                    padding: EdgeInsets.zero,
+                                    child: mapUrl.isNotEmpty
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(DesignTokens.radiusLarge),
+                                            child: Image.network(
+                                              mapUrl,
+                                              fit: BoxFit.cover,
+                                              width: double.infinity,
+                                              height: double.infinity,
+                                              loadingBuilder: (context, child, progress) {
+                                                if (progress == null) return child;
+                                                return Center(
+                                                  child: CircularProgressIndicator(
+                                                    value: progress.expectedTotalBytes != null
+                                                        ? progress.cumulativeBytesLoaded /
+                                                            progress.expectedTotalBytes!
+                                                        : null,
+                                                  ),
+                                                );
+                                              },
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return GlassErrorState(
+                                                  title: 'Error loading map',
+                                                  message: 'Unable to load map image. Check Google Maps API key configuration.',
+                                                  icon: Icons.map_outlined,
+                                                  onRetry: () {
+                                                    setState(() {
+                                                      _interactiveMapFailed = false;
+                                                    });
+                                                    ref.invalidate(
+                                                      claimMapMarkersProvider(
+                                                        statusFilter: _statusFilter,
+                                                        technicianId: _technicianFilter,
+                                                        technicianAssignmentFilter: _technicianAssignmentFilter,
+                                                      ),
+                                                    );
+                                                  },
+                                                );
+                                              },
+                                            ),
+                                          )
+                                        : GlassErrorState(
+                                            title: 'Map unavailable',
+                                            message: 'No map data available.',
+                                            icon: Icons.map_outlined,
+                                            onRetry: () {
+                                              setState(() {
+                                                _interactiveMapFailed = false;
+                                              });
+                                            },
+                                          ),
+                                  );
+                                },
                               )
                             : mapUrl.isNotEmpty
                                 ? GlassCard(
@@ -441,18 +595,89 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
-                                                  Text(
-                                                    marker.claimNumber,
-                                                    style: theme.textTheme.titleSmall?.copyWith(
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          marker.claimNumber,
+                                                          style: theme.textTheme.titleSmall?.copyWith(
+                                                            fontWeight: FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (marker.technicianName != null && marker.technicianName!.isNotEmpty)
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(
+                                                            horizontal: DesignTokens.spaceS,
+                                                            vertical: DesignTokens.spaceXS / 2,
+                                                          ),
+                                                          decoration: BoxDecoration(
+                                                            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                                                            borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
+                                                            border: Border.all(
+                                                              color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                                                              width: 1,
+                                                            ),
+                                                          ),
+                                                          child: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              Icon(
+                                                                Icons.person,
+                                                                size: 12,
+                                                                color: theme.colorScheme.primary,
+                                                              ),
+                                                              const SizedBox(width: DesignTokens.spaceXS / 2),
+                                                              Text(
+                                                                marker.technicianName!,
+                                                                style: theme.textTheme.labelSmall?.copyWith(
+                                                                  color: theme.colorScheme.primary,
+                                                                  fontWeight: FontWeight.w600,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        )
+                                                      else
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(
+                                                            horizontal: DesignTokens.spaceS,
+                                                            vertical: DesignTokens.spaceXS / 2,
+                                                          ),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.orange.withValues(alpha: 0.2),
+                                                            borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
+                                                            border: Border.all(
+                                                              color: Colors.orange.withValues(alpha: 0.5),
+                                                              width: 1,
+                                                            ),
+                                                          ),
+                                                          child: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              Icon(
+                                                                Icons.person_outline,
+                                                                size: 12,
+                                                                color: Colors.orange,
+                                                              ),
+                                                              const SizedBox(width: DesignTokens.spaceXS / 2),
+                                                              Text(
+                                                                'Unassigned',
+                                                                style: theme.textTheme.labelSmall?.copyWith(
+                                                                  color: Colors.orange,
+                                                                  fontWeight: FontWeight.w600,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                    ],
                                                   ),
                                                   const SizedBox(height: DesignTokens.spaceXS),
                                                   Text(
                                                     [
                                                       marker.clientName,
                                                       marker.address,
-                                                      marker.technicianName,
                                                     ]
                                                         .where((s) => s != null && s.isNotEmpty)
                                                         .join(' • '),
@@ -560,7 +785,6 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
               ],
               onChanged: (value) {
                 setState(() => _statusFilter = value);
-                Navigator.pop(context);
               },
             ),
             const SizedBox(height: DesignTokens.spaceM),
@@ -595,12 +819,48 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
                     ],
                     onChanged: (value) {
                       setState(() => _technicianFilter = value);
-                      Navigator.pop(context);
                     },
                   ),
                   loading: () => const Center(child: CircularProgressIndicator()),
                   error: (_, __) => const Text('Error loading technicians'),
                 );
+              },
+            ),
+            const SizedBox(height: DesignTokens.spaceM),
+            DropdownButtonFormField<bool?>(
+              value: _technicianAssignmentFilter,
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Technician Assignment',
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: null,
+                  child: Text('All'),
+                ),
+                DropdownMenuItem(
+                  value: true,
+                  child: Row(
+                    children: [
+                      Icon(Icons.person, size: 18),
+                      SizedBox(width: DesignTokens.spaceS),
+                      Text('Assigned'),
+                    ],
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: false,
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_outline, size: 18),
+                      SizedBox(width: DesignTokens.spaceS),
+                      Text('Unassigned'),
+                    ],
+                  ),
+                ),
+              ],
+              onChanged: (value) {
+                setState(() => _technicianAssignmentFilter = value);
               },
             ),
           ],
@@ -611,14 +871,67 @@ class _MapViewScreenState extends ConsumerState<MapViewScreen> {
               setState(() {
                 _statusFilter = null;
                 _technicianFilter = null;
+                _technicianAssignmentFilter = null;
               });
-              Navigator.pop(context);
             },
-            child: const Text('Clear filters'),
+            child: const Text('Clear all'),
+          ),
+          GlassButton.ghost(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
           GlassButton.primary(
             onPressed: () => Navigator.pop(context),
             child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: DesignTokens.spaceS),
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: DesignTokens.spaceS),
+          Text(
+            value,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
         ],
       ),

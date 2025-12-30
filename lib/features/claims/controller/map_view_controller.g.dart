@@ -24,7 +24,12 @@ final class ClaimMapMarkersProvider
         $FutureProvider<List<ClaimMapMarker>> {
   const ClaimMapMarkersProvider._({
     required ClaimMapMarkersFamily super.from,
-    required ({ClaimStatus? statusFilter, String? technicianId}) super.argument,
+    required ({
+      ClaimStatus? statusFilter,
+      String? technicianId,
+      bool? technicianAssignmentFilter,
+    })
+    super.argument,
   }) : super(
          retry: null,
          name: r'claimMapMarkersProvider',
@@ -52,11 +57,17 @@ final class ClaimMapMarkersProvider
   @override
   FutureOr<List<ClaimMapMarker>> create(Ref ref) {
     final argument =
-        this.argument as ({ClaimStatus? statusFilter, String? technicianId});
+        this.argument
+            as ({
+              ClaimStatus? statusFilter,
+              String? technicianId,
+              bool? technicianAssignmentFilter,
+            });
     return claimMapMarkers(
       ref,
       statusFilter: argument.statusFilter,
       technicianId: argument.technicianId,
+      technicianAssignmentFilter: argument.technicianAssignmentFilter,
     );
   }
 
@@ -71,13 +82,17 @@ final class ClaimMapMarkersProvider
   }
 }
 
-String _$claimMapMarkersHash() => r'ee96d609cf3a90659fd2f752a91e4760efd838a6';
+String _$claimMapMarkersHash() => r'2ab961290252e2ec6bff6f1642d6302d33a36c48';
 
 final class ClaimMapMarkersFamily extends $Family
     with
         $FunctionalFamilyOverride<
           FutureOr<List<ClaimMapMarker>>,
-          ({ClaimStatus? statusFilter, String? technicianId})
+          ({
+            ClaimStatus? statusFilter,
+            String? technicianId,
+            bool? technicianAssignmentFilter,
+          })
         > {
   const ClaimMapMarkersFamily._()
     : super(
@@ -91,8 +106,13 @@ final class ClaimMapMarkersFamily extends $Family
   ClaimMapMarkersProvider call({
     ClaimStatus? statusFilter,
     String? technicianId,
+    bool? technicianAssignmentFilter,
   }) => ClaimMapMarkersProvider._(
-    argument: (statusFilter: statusFilter, technicianId: technicianId),
+    argument: (
+      statusFilter: statusFilter,
+      technicianId: technicianId,
+      technicianAssignmentFilter: technicianAssignmentFilter,
+    ),
     from: this,
   );
 

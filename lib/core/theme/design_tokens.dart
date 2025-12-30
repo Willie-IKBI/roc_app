@@ -1,10 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart' as google_fonts;
 
 /// Design tokens for the Repair On Call glassmorphism design system.
 /// 
 /// These tokens provide a centralized source of truth for colors, spacing,
 /// typography, borders, shadows, and other design constants used throughout
 /// the application. All tokens are theme-aware and adapt to light/dark modes.
+/// 
+/// ## Usage Patterns
+/// 
+/// ### Colors
+/// Always use the helper methods to get theme-aware colors:
+/// ```dart
+/// // Good - theme-aware
+/// DesignTokens.glassBase(Theme.of(context).brightness)
+/// DesignTokens.textPrimary(Theme.of(context).brightness)
+/// 
+/// // Avoid - hardcoded
+/// DesignTokens.glassBaseDark // Only use in theme definitions
+/// ```
+/// 
+/// ### Spacing
+/// Use spacing tokens for consistent padding and margins:
+/// ```dart
+/// Padding(
+///   padding: const EdgeInsets.all(DesignTokens.spaceM),
+///   child: Text('Content'),
+/// )
+/// ```
+/// 
+/// ### Border Radius
+/// Use radius tokens for consistent rounded corners:
+/// ```dart
+/// BorderRadius.circular(DesignTokens.radiusLarge) // For cards
+/// BorderRadius.circular(DesignTokens.radiusPill) // For buttons
+/// ```
+/// 
+/// ### Blur
+/// Blur values are optimized for performance (10-15px range):
+/// ```dart
+/// BackdropFilter(
+///   filter: ImageFilter.blur(
+///     sigmaX: DesignTokens.blurLarge,
+///     sigmaY: DesignTokens.blurLarge,
+///   ),
+/// )
+/// ```
 @immutable
 class DesignTokens {
   const DesignTokens._();
@@ -189,6 +230,56 @@ class DesignTokens {
   /// Get canvas color based on theme brightness
   static Color canvas(Brightness brightness) {
     return brightness == Brightness.dark ? canvasDark : canvasLight;
+  }
+}
+
+/// Extension to apply monospace font (Fira Code) to text styles.
+/// 
+/// Use this for IDs, dates, numbers, and other technical data that benefits
+/// from monospace formatting for better readability and alignment.
+/// 
+/// Example:
+/// ```dart
+/// Text(
+///   claim.claimNumber,
+///   style: theme.textTheme.titleSmall?.monospace(),
+/// )
+/// ```
+extension MonospaceTextStyle on TextStyle? {
+  /// Returns a copy of this text style with Fira Code monospace font applied.
+  /// 
+  /// The font color is adjusted with [DesignTokens.monospaceOpacity] for
+  /// visual distinction from regular text.
+  TextStyle? monospace({Color? color}) {
+    if (this == null) return null;
+    
+    try {
+      // Try to use Google Fonts Fira Code
+      final firaCodeStyle = google_fonts.GoogleFonts.firaCode(
+        fontWeight: this!.fontWeight,
+        fontSize: this!.fontSize,
+        letterSpacing: this!.letterSpacing,
+        color: color ?? this!.color?.withValues(
+          alpha: DesignTokens.monospaceOpacity,
+        ),
+      );
+      return firaCodeStyle.copyWith(
+        decoration: this!.decoration,
+        decorationColor: this!.decorationColor,
+        decorationStyle: this!.decorationStyle,
+        decorationThickness: this!.decorationThickness,
+        height: this!.height,
+        shadows: this!.shadows,
+      );
+    } catch (e) {
+      // Fallback to system monospace
+      return this!.copyWith(
+        fontFamily: 'monospace',
+        color: color ?? this!.color?.withValues(
+          alpha: DesignTokens.monospaceOpacity,
+        ),
+      );
+    }
   }
 }
 

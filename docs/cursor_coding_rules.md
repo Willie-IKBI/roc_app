@@ -123,6 +123,50 @@ Components:
 
 Cursor rule: when adding a widget with custom color, first add a semantic token to theme, then use it.
 
+## 5.1) Glassmorphism Design System
+
+The app uses a dark glassmorphism design system with both light and dark theme support.
+
+### Design Tokens
+
+- Always use `DesignTokens` helper methods for theme-aware colors:
+  ```dart
+  DesignTokens.glassBase(Theme.of(context).brightness)
+  DesignTokens.textPrimary(Theme.of(context).brightness)
+  ```
+- Use spacing tokens: `DesignTokens.spaceXS` through `DesignTokens.spaceXL`
+- Use radius tokens: `DesignTokens.radiusSmall`, `radiusMedium`, `radiusLarge`, `radiusPill`
+- Blur values are optimized for performance (10-15px range)
+
+### Glass Components
+
+Use glass components from `core/widgets/`:
+
+- **GlassCard**: For content containers with backdrop blur
+- **GlassButton**: Primary, secondary, ghost, and outlined variants (all rounded-full)
+- **GlassInput**: Text fields with glass styling
+- **GlassBadge**: Status indicators with transparent backgrounds
+- **GlassContainer**: General-purpose glass surfaces
+- **GlassDialog**: Dialogs with glass styling
+- **GlassNavBar**: Floating navigation with pill-shaped tabs
+
+### Best Practices
+
+- All glass surfaces use `BackdropFilter` with optimized blur (sigma 10-15)
+- All cards use `rounded-3xl` (24px) border radius
+- All buttons use `rounded-full` (pill shape)
+- Navigation uses floating design with margins from edges
+- Use `RepaintBoundary` for glass components in lists (already included in components)
+- Always provide `semanticLabel` for icon-only buttons
+
+### Performance
+
+- Blur values are optimized to 12px (reduced from 24px for performance)
+- `RepaintBoundary` is used in all glass components
+- For lower-end devices, consider using `PerformanceUtils.getOptimizedBlur()` if needed
+
+Cursor rule: when creating new UI, use glass components instead of Material widgets. Always use design tokens, never hardcode colors or spacing.
+
 ## 6) Navigation (GoRouter)
 
 - Typed routes with names and nested shells.

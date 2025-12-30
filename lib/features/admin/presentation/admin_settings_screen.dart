@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/domain_error.dart';
 import '../../../core/theme/design_tokens.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_dialog.dart';
 import '../../../core/widgets/glass_input.dart';
 import '../../admin/controller/queue_settings_controller.dart';
 import '../../admin/controller/sla_rules_controller.dart';
@@ -200,7 +203,7 @@ class _SlaRuleCardState extends ConsumerState<_SlaRuleCard> {
           },
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => _SettingsError(
-            message: error.toString(),
+            message: getUserFriendlyErrorMessage(error, isDebugMode: kDebugMode),
             onRetry: () => ref
                 .read(slaRulesControllerProvider.notifier)
                 .refresh(),
@@ -359,7 +362,7 @@ class _QueueSettingsCardState extends ConsumerState<_QueueSettingsCard> {
           },
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => _SettingsError(
-            message: error.toString(),
+            message: getUserFriendlyErrorMessage(error, isDebugMode: kDebugMode),
             onRetry: () => ref
                 .read(queueSettingsControllerProvider.notifier)
                 .refresh(),
@@ -540,7 +543,7 @@ class _SmsSenderCardState extends ConsumerState<_SmsSenderCard> {
           },
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => _SettingsError(
-            message: error.toString(),
+            message: getUserFriendlyErrorMessage(error, isDebugMode: kDebugMode),
             onRetry: () =>
                 ref.read(smsSenderControllerProvider.notifier).refresh(),
           ),
@@ -562,7 +565,7 @@ class _SmsTemplatesSection extends ConsumerWidget {
           data: (templates) => _SmsTemplatesContent(templates: templates),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => _SettingsError(
-            message: error.toString(),
+            message: getUserFriendlyErrorMessage(error, isDebugMode: kDebugMode),
             onRetry: () =>
                 ref.read(smsTemplatesControllerProvider.notifier).refresh(),
           ),
@@ -636,7 +639,7 @@ class _SmsTemplatesContent extends ConsumerWidget {
 
   Future<void> _editTemplate(BuildContext context, WidgetRef ref,
       {SmsTemplate? template}) async {
-    final result = await showDialog<_SmsTemplatePayload>(
+    final result = await showGlassDialog<_SmsTemplatePayload>(
       context: context,
       builder: (context) => _SmsTemplateDialog(template: template),
     );
@@ -725,7 +728,7 @@ class _SmsTemplateTile extends ConsumerWidget {
     }
 
     Future<void> edit() async {
-      final payload = await showDialog<_SmsTemplatePayload>(
+      final payload = await showGlassDialog<_SmsTemplatePayload>(
         context: context,
         builder: (context) => _SmsTemplateDialog(template: template),
       );
@@ -752,15 +755,15 @@ class _SmsTemplateTile extends ConsumerWidget {
     }
 
     Future<void> remove() async {
-      final confirm = await showDialog<bool>(
+      final confirm = await showGlassDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => GlassDialog(
           title: const Text('Delete template'),
           content: Text(
             'Delete ${template.name}? This cannot be undone.',
           ),
           actions: [
-            TextButton(
+            GlassButton.ghost(
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
@@ -892,7 +895,7 @@ class _SmsTemplateDialogState extends State<_SmsTemplateDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.template != null;
-    return AlertDialog(
+    return GlassDialog(
       title: Text(isEditing ? 'Edit SMS template' : 'Create SMS template'),
       content: SizedBox(
         width: 520,
@@ -957,7 +960,7 @@ class _SmsTemplateDialogState extends State<_SmsTemplateDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        GlassButton.ghost(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
