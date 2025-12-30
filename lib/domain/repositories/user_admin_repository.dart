@@ -5,6 +5,8 @@ import '../value_objects/role_type.dart';
 abstract class UserAdminRepository {
   Future<Result<List<UserAccount>>> fetchUsers();
 
+  Future<Result<List<UserAccount>>> fetchTechnicians();
+
   Future<Result<void>> updateRole({
     required String userId,
     required RoleType role,

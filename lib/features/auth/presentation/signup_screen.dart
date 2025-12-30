@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../controller/auth_controller.dart';
 import 'widgets/auth_scaffold.dart';
 
@@ -93,17 +95,19 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             const SizedBox(height: 24),
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Full name (optional)',
-                prefixIcon: Icon(Icons.person_outline),
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Full name (optional)',
+                prefixIcon: const Icon(Icons.person_outline),
               ),
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Work email',
-                prefixIcon: Icon(Icons.mail_outline),
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Work email',
+                prefixIcon: const Icon(Icons.mail_outline),
               ),
               keyboardType: TextInputType.emailAddress,
               validator: (value) {
@@ -120,8 +124,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             TextFormField(
               controller: _passwordController,
               obscureText: _obscurePassword,
-              decoration: InputDecoration(
-                labelText: 'Password',
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Password',
                 prefixIcon: const Icon(Icons.lock_outline),
                 suffixIcon: IconButton(
                   icon: Icon(
@@ -148,8 +153,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             TextFormField(
               controller: _confirmPasswordController,
               obscureText: _obscureConfirmPassword,
-              decoration: InputDecoration(
-                labelText: 'Confirm password',
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Confirm password',
                 prefixIcon: const Icon(Icons.lock_outline),
                 suffixIcon: IconButton(
                   icon: Icon(
@@ -173,7 +179,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
               },
             ),
             const SizedBox(height: 24),
-            FilledButton(
+            GlassButton.primary(
               onPressed: signUpState.isLoading ? null : _handleSubmit,
               child: signUpState.isLoading
                   ? const SizedBox.square(

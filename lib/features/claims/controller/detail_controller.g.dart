@@ -51,7 +51,7 @@ final class ClaimDetailControllerProvider
 }
 
 String _$claimDetailControllerHash() =>
-    r'f2fa8d48a491631104e32a4be6112e6122598b88';
+    r'7fab69d3daf420007f3ab6e6cd6d84baadf56c58';
 
 final class ClaimDetailControllerFamily extends $Family
     with

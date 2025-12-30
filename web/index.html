@@ -37,8 +37,6 @@
     window.rocPlaces = (function () {
       let scriptLoader = null;
       let placesLibraryPromise = null;
-      let autocompleteService = null;
-      let placesService = null;
       let sessionToken = null;
       let cachedKey = '';
 
@@ -46,7 +44,8 @@
         if (!apiKey) {
           return Promise.reject('Missing Maps API key.');
         }
-        if (window.google && window.google.maps && window.google.maps.places) {
+        // Check if Maps API is already fully loaded
+        if (window.google && window.google.maps && window.google.maps.Map && window.google.maps.places) {
           return Promise.resolve();
         }
         if (scriptLoader) {
@@ -61,9 +60,46 @@
           script.async = true;
           script.defer = true;
           script.onload = function () {
-            resolve();
+            // Wait for the full Maps API to be initialized, not just the script tag
+            let attempts = 0;
+            const maxAttempts = 50; // 5 seconds max
+            const pollInterval = 100; // Check every 100ms
+            
+            function checkMapsAPI() {
+              // Verify the main Maps API is available AND Map is a constructor function
+              if (window.google && 
+                  window.google.maps && 
+                  window.google.maps.Map &&
+                  typeof window.google.maps.Map === 'function' &&
+                  window.google.maps.LatLng &&
+                  typeof window.google.maps.LatLng === 'function') {
+                console.log('[rocPlaces] Google Maps API fully initialized after', attempts, 'attempts');
+                console.log('[rocPlaces] Map constructor available:', typeof window.google.maps.Map);
+                console.log('[rocPlaces] LatLng constructor available:', typeof window.google.maps.LatLng);
+                resolve();
+                return;
+              }
+              
+              attempts++;
+              if (attempts >= maxAttempts) {
+                console.error('[rocPlaces] Google Maps API not initialized after script load');
+                console.error('[rocPlaces] window.google:', !!window.google);
+                console.error('[rocPlaces] window.google.maps:', !!window.google?.maps);
+                console.error('[rocPlaces] window.google.maps.Map:', !!window.google?.maps?.Map);
+                console.error('[rocPlaces] window.google.maps.Map type:', typeof window.google?.maps?.Map);
+                console.error('[rocPlaces] window.google.maps.LatLng:', !!window.google?.maps?.LatLng);
+                reject(new Error('Google Maps API failed to initialize after script load'));
+                return;
+              }
+              
+              setTimeout(checkMapsAPI, pollInterval);
+            }
+            
+            // Start checking immediately
+            checkMapsAPI();
           };
           script.onerror = function (error) {
+            console.error('[rocPlaces] Script load error:', error);
             reject(error);
           };
           document.head.appendChild(script);
@@ -73,26 +109,134 @@
 
       async function ensurePlacesReady(apiKey) {
         if (!apiKey) {
+          console.error('[rocPlaces] Missing Maps API key');
           return Promise.reject('Missing Maps API key.');
         }
-        cachedKey = apiKey;
-        await loadScript(apiKey);
-        if (
-          window.google &&
-          window.google.maps &&
-          window.google.maps.importLibrary
-        ) {
-          if (!placesLibraryPromise) {
-            placesLibraryPromise = window.google.maps.importLibrary('places');
+        try {
+          cachedKey = apiKey;
+          await loadScript(apiKey);
+          console.log('[rocPlaces] Script loaded, verifying main Maps API is ready...');
+          
+          // CRITICAL: Wait for main Maps API to be fully initialized BEFORE loading Places
+          // This ensures Map, LatLng, and other core classes are available
+          let mainApiAttempts = 0;
+          const mainApiMaxAttempts = 50;
+          const mainApiPollInterval = 100;
+          
+          while (mainApiAttempts < mainApiMaxAttempts) {
+            if (window.google && 
+                window.google.maps && 
+                window.google.maps.Map &&
+                typeof window.google.maps.Map === 'function' &&
+                window.google.maps.LatLng &&
+                typeof window.google.maps.LatLng === 'function') {
+              console.log('[rocPlaces] Main Maps API confirmed ready after', mainApiAttempts, 'attempts');
+              break;
+            }
+            await new Promise(function(resolve) {
+              setTimeout(resolve, mainApiPollInterval);
+            });
+            mainApiAttempts++;
+            if (mainApiAttempts % 10 === 0) {
+              console.log('[rocPlaces] Waiting for main Maps API... attempt', mainApiAttempts);
+            }
           }
-          await placesLibraryPromise;
-        }
-        if (!autocompleteService) {
-          autocompleteService = new google.maps.places.AutocompleteService();
-        }
-        if (!placesService) {
-          const div = document.createElement('div');
-          placesService = new google.maps.places.PlacesService(div);
+          
+          if (mainApiAttempts >= mainApiMaxAttempts) {
+            console.error('[rocPlaces] Main Maps API not ready after waiting');
+            console.error('[rocPlaces] window.google.maps.Map:', !!window.google?.maps?.Map);
+            console.error('[rocPlaces] window.google.maps.Map type:', typeof window.google?.maps?.Map);
+            return Promise.reject('Main Maps API (Map, LatLng) not ready');
+          }
+          
+          console.log('[rocPlaces] Main Maps API ready, checking for importLibrary...');
+          
+          // Now that main Maps API is ready, we can safely use importLibrary if available
+          if (
+            window.google &&
+            window.google.maps &&
+            window.google.maps.importLibrary
+          ) {
+            console.log('[rocPlaces] importLibrary available, loading places library...');
+            if (!placesLibraryPromise) {
+              placesLibraryPromise = window.google.maps.importLibrary('places');
+            }
+            await placesLibraryPromise;
+            console.log('[rocPlaces] importLibrary completed');
+          } else {
+            console.log('[rocPlaces] importLibrary not available, using traditional loading');
+          }
+          
+          // Wait for places library to be available (with retry mechanism)
+          // This handles the async loading delay when using loading=async
+          let attempts = 0;
+          const maxAttempts = 50; // 5 seconds max (50 * 100ms)
+          const pollInterval = 100; // Check every 100ms
+          
+          while (!window.google?.maps?.places && attempts < maxAttempts) {
+            await new Promise(function(resolve) {
+              setTimeout(resolve, pollInterval);
+            });
+            attempts++;
+            if (attempts % 10 === 0) {
+              console.log('[rocPlaces] Waiting for places library... attempt', attempts);
+            }
+          }
+          
+          // Verify both main Maps API and Places are available
+          if (
+            !window.google ||
+            !window.google.maps ||
+            !window.google.maps.Map ||
+            typeof window.google.maps.Map !== 'function' ||
+            !window.google.maps.places
+          ) {
+            console.error('[rocPlaces] Google Maps API not fully loaded after', attempts, 'attempts');
+            console.error('[rocPlaces] window.google:', !!window.google);
+            console.error('[rocPlaces] window.google.maps:', !!window.google?.maps);
+            console.error('[rocPlaces] window.google.maps.Map:', !!window.google?.maps?.Map);
+            console.error('[rocPlaces] window.google.maps.Map type:', typeof window.google?.maps?.Map);
+            console.error('[rocPlaces] window.google.maps.places:', !!window.google?.maps?.places);
+            return Promise.reject('Google Maps API not fully loaded (Map or Places missing)');
+          }
+          
+          console.log('[rocPlaces] Places library loaded successfully after', attempts, 'attempts');
+          console.log('[rocPlaces] Main Maps API confirmed ready (Map constructor available)');
+          
+          // Verify Geocoder is available (needed for reverse geocoding)
+          if (!window.google.maps.Geocoder) {
+            console.warn('[rocPlaces] Geocoder not available - reverse geocoding will not work');
+            console.warn('[rocPlaces] This may indicate the Geocoding API is not enabled');
+          } else {
+            console.log('[rocPlaces] Geocoder available for reverse geocoding');
+          }
+          
+          // Check if at least one API is available
+          const hasNewAutocomplete = !!window.google.maps.places.AutocompleteSuggestion;
+          const hasLegacyAutocomplete = !!window.google.maps.places.AutocompleteService;
+          const hasNewPlace = !!window.google.maps.places.Place;
+          const hasLegacyPlace = !!window.google.maps.places.PlacesService;
+          
+          console.log('[rocPlaces] API availability:', {
+            mainMapsAPI: !!window.google.maps.Map,
+            geocoder: !!window.google.maps.Geocoder,
+            newAutocomplete: hasNewAutocomplete,
+            legacyAutocomplete: hasLegacyAutocomplete,
+            newPlace: hasNewPlace,
+            legacyPlace: hasLegacyPlace,
+          });
+          
+          if (!hasNewAutocomplete && !hasLegacyAutocomplete) {
+            console.error('[rocPlaces] No autocomplete API available');
+            return Promise.reject('Autocomplete API not available');
+          }
+          if (!hasNewPlace && !hasLegacyPlace) {
+            console.error('[rocPlaces] No place details API available');
+            return Promise.reject('Place details API not available');
+          }
+        } catch (error) {
+          console.error('[rocPlaces] Error initializing Places API:', error);
+          return Promise.reject('Failed to initialize Places API: ' + error.message);
         }
       }
 
@@ -114,9 +258,13 @@
       }
 
       function mapPrediction(prediction) {
+        if (!prediction) {
+          console.warn('[rocPlaces] mapPrediction received null/undefined prediction');
+          return null;
+        }
         const structured =
           prediction.structured_formatting || prediction.structuredFormatting;
-        return {
+        const result = {
           description: prediction.description || '',
           place_id: prediction.place_id || prediction.placeId || '',
           structured_formatting: structured
@@ -128,6 +276,10 @@
               }
             : null,
         };
+        if (!result.place_id || !result.description) {
+          console.warn('[rocPlaces] mapPrediction: missing place_id or description', prediction);
+        }
+        return result;
       }
 
       function mapAddressComponents(components) {
@@ -140,82 +292,920 @@
         });
       }
 
+      async function reverseGeocode(lat, lng) {
+        if (!lat || !lng) {
+          return Promise.reject('Missing latitude or longitude');
+        }
+        if (!cachedKey) {
+          return Promise.reject('Places API not initialized');
+        }
+        
+        try {
+          await ensurePlacesReady(cachedKey);
+          console.log('[rocPlaces] Reverse geocoding for coordinates:', lat, lng);
+          
+          // Verify main Maps API is available
+          if (!window.google || !window.google.maps) {
+            console.error('[rocPlaces] Google Maps API not available for reverse geocoding');
+            return Promise.reject('Google Maps API not available');
+          }
+          
+          // Verify Geocoder is available and is a constructor function
+          if (!window.google.maps.Geocoder) {
+            console.error('[rocPlaces] Geocoder not available');
+            console.error('[rocPlaces] Please ensure:');
+            console.error('[rocPlaces] 1. Geocoding API is enabled in Google Cloud Console');
+            console.error('[rocPlaces] 2. API key has access to Geocoding API');
+            console.error('[rocPlaces] 3. Billing is enabled for your Google Cloud project');
+            return Promise.reject('Geocoder not available. Please enable Geocoding API in Google Cloud Console.');
+          }
+          
+          if (typeof window.google.maps.Geocoder !== 'function') {
+            console.error('[rocPlaces] Geocoder is not a constructor function');
+            console.error('[rocPlaces] Geocoder type:', typeof window.google.maps.Geocoder);
+            return Promise.reject('Geocoder is not properly initialized');
+          }
+          
+          console.log('[rocPlaces] Geocoder verified as constructor function, using for reverse geocoding');
+          return new Promise(function (resolve, reject) {
+            try {
+              // Verify GeocoderStatus enum is available
+              if (!google.maps.GeocoderStatus) {
+                console.error('[rocPlaces] GeocoderStatus enum not available');
+                reject('GeocoderStatus not available');
+                return;
+              }
+              
+              console.log('[rocPlaces] Creating Geocoder instance...');
+              const geocoder = new google.maps.Geocoder();
+              if (!geocoder) {
+                console.error('[rocPlaces] Failed to create Geocoder instance');
+                reject('Failed to create Geocoder instance');
+                return;
+              }
+              
+              console.log('[rocPlaces] Geocoder instance created successfully');
+              console.log('[rocPlaces] Preparing geocode request for coordinates:', lat, lng);
+              
+              const request = {
+                location: { lat: parseFloat(lat), lng: parseFloat(lng) },
+              };
+              console.log('[rocPlaces] Geocode request:', JSON.stringify(request));
+              
+              console.log('[rocPlaces] Calling geocoder.geocode()...');
+              geocoder.geocode(
+                request,
+                function (results, status) {
+                  console.log('[rocPlaces] ===== Geocode callback fired =====');
+                  const statusStr = status !== undefined && status !== null ? String(status) : 'undefined/null';
+                  console.log('[rocPlaces] Callback status: ' + statusStr + ' (type: ' + typeof status + ')');
+                  const resultsStr = results !== undefined && results !== null 
+                    ? (Array.isArray(results) ? 'Array(' + results.length + ')' : typeof results)
+                    : 'undefined/null';
+                  console.log('[rocPlaces] Callback results: ' + resultsStr + ' (type: ' + typeof results + ', isArray: ' + Array.isArray(results) + ')');
+                  const resultsLength = results && Array.isArray(results) ? results.length : (results ? 'not an array' : 'null/undefined');
+                  console.log('[rocPlaces] Callback results length: ' + resultsLength);
+                  
+                  if (results && Array.isArray(results) && results.length > 0) {
+                    const firstResult = JSON.stringify(results[0], null, 2);
+                    console.log('[rocPlaces] First result: ' + firstResult);
+                    const formattedAddr = results[0].formatted_address || 'missing';
+                    console.log('[rocPlaces] First result formatted_address: ' + formattedAddr);
+                    const addrComponents = results[0].address_components ? JSON.stringify(results[0].address_components, null, 2) : 'missing';
+                    console.log('[rocPlaces] First result address_components: ' + addrComponents);
+                  } else {
+                    console.log('[rocPlaces] No results or empty array');
+                    if (results && !Array.isArray(results)) {
+                      const resultsJson = JSON.stringify(results, null, 2);
+                      console.log('[rocPlaces] Results is not an array (type: ' + typeof results + '): ' + resultsJson);
+                    }
+                  }
+                  
+                  // Check status
+                  const statusOK = google.maps.GeocoderStatus.OK;
+                  const statusOKStr = String(statusOK);
+                  console.log('[rocPlaces] GeocoderStatus.OK value: ' + statusOKStr);
+                  console.log('[rocPlaces] Status comparison (status === OK): ' + (status === statusOK));
+                  console.log('[rocPlaces] Status comparison (status == OK): ' + (status == statusOK));
+                  console.log('[rocPlaces] Status comparison (String(status) === String(OK)): ' + (String(status) === String(statusOK)));
+                  
+                  if (
+                    status !== google.maps.GeocoderStatus.OK ||
+                    !results ||
+                    !Array.isArray(results) ||
+                    results.length === 0
+                  ) {
+                    const errorStatusStr = status !== undefined && status !== null ? String(status) : 'undefined/null';
+                    console.error('[rocPlaces] Reverse geocode failed - Status: ' + errorStatusStr + ' (type: ' + typeof status + ')');
+                    const errorResultsStr = results !== undefined && results !== null 
+                      ? (Array.isArray(results) ? 'Array(' + results.length + ')' : JSON.stringify(results, null, 2))
+                      : 'undefined/null';
+                    console.error('[rocPlaces] Results: ' + errorResultsStr);
+                    const errorResultsLength = results && Array.isArray(results) ? results.length : (results ? 'not an array' : 'null/undefined');
+                    console.error('[rocPlaces] Results length: ' + errorResultsLength);
+                    
+                    if (status === google.maps.GeocoderStatus.ZERO_RESULTS) {
+                      console.error('[rocPlaces] No results found for coordinates: ' + lat + ', ' + lng);
+                    } else if (status === google.maps.GeocoderStatus.OVER_QUERY_LIMIT) {
+                      console.error('[rocPlaces] Geocoding quota exceeded');
+                    } else if (status === google.maps.GeocoderStatus.REQUEST_DENIED) {
+                      console.error('[rocPlaces] Geocoding request denied - check API key permissions');
+                    } else if (status === google.maps.GeocoderStatus.INVALID_REQUEST) {
+                      console.error('[rocPlaces] Invalid request - check coordinates: ' + lat + ', ' + lng);
+                    } else {
+                      console.error('[rocPlaces] Unknown status: ' + errorStatusStr);
+                    }
+                    reject(status || 'UNKNOWN_ERROR');
+                    return;
+                  }
+                  
+                  console.log('[rocPlaces] Processing successful geocode result...');
+                  const result = results[0];
+                  
+                  // Extract address components
+                  const addressComponents = mapAddressComponents(
+                    result.address_components || []
+                  );
+                  const addrComponentsJson = JSON.stringify(addressComponents, null, 2);
+                  console.log('[rocPlaces] Mapped address components: ' + addrComponentsJson);
+                  
+                  const location =
+                    result.geometry && result.geometry.location
+                      ? {
+                          lat:
+                            typeof result.geometry.location.lat === 'function'
+                              ? result.geometry.location.lat()
+                              : result.geometry.location.lat,
+                          lng:
+                            typeof result.geometry.location.lng === 'function'
+                              ? result.geometry.location.lng()
+                              : result.geometry.location.lng,
+                        }
+                      : { lat: parseFloat(lat), lng: parseFloat(lng) };
+                  
+                  const locationJson = JSON.stringify(location, null, 2);
+                  console.log('[rocPlaces] Extracted location: ' + locationJson);
+                  
+                  const mappedResult = {
+                    formatted_address: result.formatted_address || '',
+                    geometry: { location: location },
+                    address_components: addressComponents,
+                  };
+                  const mappedResultJson = JSON.stringify(mappedResult, null, 2);
+                  console.log('[rocPlaces] Final mapped result: ' + mappedResultJson);
+                  console.log('[rocPlaces] Reverse geocode returning successfully');
+                  resolve(mappedResult);
+                }
+              );
+              console.log('[rocPlaces] geocode() call completed, waiting for callback...');
+            } catch (geocoderError) {
+              console.error('[rocPlaces] Error creating or using Geocoder:', geocoderError);
+              console.error('[rocPlaces] Error type:', typeof geocoderError);
+              console.error('[rocPlaces] Error message:', geocoderError?.message);
+              console.error('[rocPlaces] Error stack:', geocoderError?.stack);
+              reject(geocoderError);
+            }
+          });
+        } catch (error) {
+          console.error('[rocPlaces] Error in reverseGeocode:', error);
+          return Promise.reject(error);
+        }
+      }
+
       return {
         ensureLoaded: function (apiKey) {
           return ensurePlacesReady(apiKey);
         },
-        autocomplete: function (query) {
+        reverseGeocode: function (lat, lng) {
+          return reverseGeocode(lat, lng);
+        },
+        autocomplete: async function (query) {
           if (!query || !query.trim()) {
             return Promise.resolve([]);
           }
           if (!cachedKey) {
             return Promise.reject('Places API not initialized');
           }
-          return ensurePlacesReady(cachedKey).then(function () {
-            return new Promise(function (resolve, reject) {
-              autocompleteService.getPlacePredictions(
-                {
+          
+          try {
+            await ensurePlacesReady(cachedKey);
+            console.log('[rocPlaces] Starting autocomplete for query:', query);
+            console.log('[rocPlaces] AutocompleteSuggestion available:', !!window.google.maps.places.AutocompleteSuggestion);
+            console.log('[rocPlaces] AutocompleteService available:', !!window.google.maps.places.AutocompleteService);
+            
+            // Use new AutocompleteSuggestion API if available, fallback to legacy
+            if (
+              window.google.maps.places.AutocompleteSuggestion &&
+              window.google.maps.places.AutocompleteSuggestion
+                .fetchAutocompleteSuggestions
+            ) {
+              try {
+                console.log('[rocPlaces] Attempting to use AutocompleteSuggestion API');
+                const request = {
                   input: query,
                   sessionToken: getSessionToken(),
-                  componentRestrictions: { country: 'za' },
-                },
-                function (predictions, status) {
-                  if (
-                    status !== google.maps.places.PlacesServiceStatus.OK ||
-                    !predictions
-                  ) {
-                    reject(status);
-                    return;
-                  }
-                  resolve(predictions.map(mapPrediction));
+                  includedRegionCodes: ['za'],
+                };
+                const response = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(
+                  request
+                );
+                console.log('[rocPlaces] AutocompleteSuggestion raw response:', response);
+                console.log('[rocPlaces] Response type:', typeof response);
+                console.log('[rocPlaces] Response keys:', response ? Object.keys(response) : 'null');
+                console.log('[rocPlaces] Has suggestions property:', !!(response && response.suggestions));
+                console.log('[rocPlaces] Suggestions type:', response?.suggestions ? typeof response.suggestions : 'N/A');
+                console.log('[rocPlaces] Suggestions is array:', Array.isArray(response?.suggestions));
+                console.log('[rocPlaces] Suggestions length:', response?.suggestions?.length ?? 0);
+                
+                if (response && response.suggestions) {
+                  console.log('[rocPlaces] Processing', response.suggestions.length, 'suggestions');
+                  const mapped = response.suggestions.map(function (suggestion, index) {
+                    console.log('[rocPlaces] Suggestion', index, 'raw:', suggestion);
+                    console.log('[rocPlaces] Suggestion', index, 'type:', typeof suggestion);
+                    console.log('[rocPlaces] Suggestion', index, 'keys:', suggestion ? Object.keys(suggestion) : 'null');
+                    
+                    // Try different possible response structures
+                    const placePrediction = suggestion.placePrediction || suggestion;
+                    console.log('[rocPlaces] Suggestion', index, 'placePrediction:', placePrediction);
+                    
+                    // Handle text property - could be string or object with .text property
+                    let textValue = '';
+                    if (placePrediction?.text) {
+                      if (typeof placePrediction.text === 'string') {
+                        textValue = placePrediction.text;
+                      } else if (placePrediction.text?.text) {
+                        textValue = placePrediction.text.text;
+                      }
+                    }
+                    if (!textValue && placePrediction?.description) {
+                      textValue = typeof placePrediction.description === 'string' 
+                        ? placePrediction.description 
+                        : (placePrediction.description?.text || '');
+                    }
+                    if (!textValue && suggestion.text) {
+                      textValue = typeof suggestion.text === 'string' 
+                        ? suggestion.text 
+                        : (suggestion.text?.text || '');
+                    }
+                    if (!textValue && suggestion.description) {
+                      textValue = typeof suggestion.description === 'string' 
+                        ? suggestion.description 
+                        : (suggestion.description?.text || '');
+                    }
+                    
+                    // Handle placeId property - could be placeId or place_id
+                    let placeId = '';
+                    if (placePrediction?.placeId) {
+                      placeId = String(placePrediction.placeId);
+                    } else if (placePrediction?.place_id) {
+                      placeId = String(placePrediction.place_id);
+                    } else if (suggestion.placeId) {
+                      placeId = String(suggestion.placeId);
+                    } else if (suggestion.place_id) {
+                      placeId = String(suggestion.place_id);
+                    }
+                    
+                    console.log('[rocPlaces] Suggestion', index, 'extracted - textValue:', textValue, 'placeId:', placeId);
+                    
+                    const result = {
+                      description: textValue,
+                      place_id: placeId,
+                      structured_formatting: textValue
+                        ? {
+                            main_text: textValue,
+                            secondary_text: '',
+                          }
+                        : null,
+                    };
+                    
+                    const hasRequiredFields = !!(result.place_id && result.description);
+                    console.log('[rocPlaces] Suggestion', index, 'mapped result:', result);
+                    console.log('[rocPlaces] Suggestion', index, 'has required fields:', hasRequiredFields);
+                    
+                    if (!hasRequiredFields) {
+                      console.warn('[rocPlaces] Suggestion', index, 'will be filtered - missing place_id or description');
+                    }
+                    
+                    return result;
+                  }).filter(function(item, index) {
+                    const keep = !!(item.place_id && item.description);
+                    if (!keep) {
+                      console.warn('[rocPlaces] Filtering out item', index, '- place_id:', item.place_id, 'description:', item.description);
+                    }
+                    return keep;
+                  });
+                  
+                  console.log('[rocPlaces] After filtering:', mapped.length, 'suggestions remain');
+                  console.log('[rocPlaces] Final mapped array:', mapped);
+                  console.log('[rocPlaces] Returning', mapped.length, 'mapped suggestions');
+                  return mapped;
                 }
-              );
-            });
-          });
+                console.warn('[rocPlaces] AutocompleteSuggestion returned no suggestions or invalid response structure');
+                console.warn('[rocPlaces] Response was:', response);
+                return [];
+              } catch (error) {
+                // Fallback to legacy API if new API fails
+                console.warn('[rocPlaces] New AutocompleteSuggestion API failed, using legacy:', error);
+                console.error('[rocPlaces] Error details:', error.message, error.stack);
+              }
+            }
+            // Legacy AutocompleteService fallback
+            if (window.google.maps.places.AutocompleteService) {
+              console.log('[rocPlaces] Using legacy AutocompleteService');
+              return new Promise(function (resolve, reject) {
+                const autocompleteService = new google.maps.places.AutocompleteService();
+                autocompleteService.getPlacePredictions(
+                  {
+                    input: query,
+                    sessionToken: getSessionToken(),
+                    componentRestrictions: { country: 'za' },
+                  },
+                  function (predictions, status) {
+                    console.log('[rocPlaces] Legacy API status:', status);
+                    console.log('[rocPlaces] Legacy API predictions:', predictions);
+                    console.log('[rocPlaces] Legacy API predictions count:', predictions?.length || 0);
+                    if (
+                      status !== google.maps.places.PlacesServiceStatus.OK ||
+                      !predictions
+                    ) {
+                      console.error('[rocPlaces] Legacy API error:', status);
+                      console.error('[rocPlaces] Legacy API predictions was:', predictions);
+                      reject(status);
+                      return;
+                    }
+                    console.log('[rocPlaces] Legacy API mapping', predictions.length, 'predictions');
+                    const mapped = predictions.map(function(prediction, index) {
+                      console.log('[rocPlaces] Legacy prediction', index, ':', prediction);
+                      const mapped = mapPrediction(prediction);
+                      console.log('[rocPlaces] Legacy prediction', index, 'mapped to:', mapped);
+                      return mapped;
+                    }).filter(function(p, index) {
+                      const keep = p !== null && p.place_id && p.description;
+                      if (!keep) {
+                        console.warn('[rocPlaces] Legacy filtering out prediction', index, '- place_id:', p?.place_id, 'description:', p?.description);
+                      }
+                      return keep;
+                    });
+                    console.log('[rocPlaces] Legacy API returning', mapped.length, 'mapped predictions');
+                    console.log('[rocPlaces] Legacy API final mapped array:', mapped);
+                    resolve(mapped);
+                  }
+                );
+              });
+            }
+            console.error('[rocPlaces] No autocomplete API available');
+            return Promise.reject('No autocomplete API available');
+          } catch (error) {
+            console.error('[rocPlaces] Error in autocomplete:', error);
+            return Promise.reject(error);
+          }
         },
-        placeDetails: function (placeId) {
+        placeDetails: async function (placeId) {
           if (!placeId) {
             return Promise.reject('INVALID_PLACE_ID');
           }
           if (!cachedKey) {
             return Promise.reject('Places API not initialized');
           }
-          return ensurePlacesReady(cachedKey).then(function () {
-            return new Promise(function (resolve, reject) {
-              placesService.getDetails(
-                {
-                  placeId: placeId,
-                  fields: ['address_components', 'geometry', 'formatted_address'],
-                  sessionToken: getSessionToken(),
-                },
-                function (result, status) {
-                  if (
-                    status !== google.maps.places.PlacesServiceStatus.OK ||
-                    !result
-                  ) {
-                    reject(status);
-                    resetSessionToken();
-                    return;
+          
+          try {
+            await ensurePlacesReady(cachedKey);
+            console.log('[rocPlaces] Fetching place details for placeId:', placeId);
+            console.log('[rocPlaces] Place API available:', !!window.google.maps.places.Place);
+            console.log('[rocPlaces] PlacesService available:', !!window.google.maps.places.PlacesService);
+            
+            // Use new Place API if available, fallback to legacy
+            if (
+              window.google.maps.places.Place &&
+              typeof window.google.maps.places.Place === 'function'
+            ) {
+              try {
+                console.log('[rocPlaces] Attempting to use Place API');
+                const place = new window.google.maps.places.Place({ id: placeId });
+                const fields = [
+                  'addressComponents',
+                  'geometry',
+                  'formattedAddress',
+                ];
+                await place.fetchFields({ fields: fields });
+                console.log('[rocPlaces] Place API response:', {
+                  formattedAddress: place.formattedAddress,
+                  hasGeometry: !!place.geometry,
+                  hasAddressComponents: !!place.addressComponents,
+                });
+                
+                // Handle different possible location formats
+                let location = null;
+                if (place.geometry?.location) {
+                  const loc = place.geometry.location;
+                  if (typeof loc.lat === 'function' && typeof loc.lng === 'function') {
+                    location = {
+                      lat: loc.lat(),
+                      lng: loc.lng(),
+                    };
+                  } else if (typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+                    location = {
+                      lat: loc.lat,
+                      lng: loc.lng,
+                    };
                   }
-                  const location =
-                    result.geometry && result.geometry.location
-                      ? {
-                          lat: result.geometry.location.lat(),
-                          lng: result.geometry.location.lng(),
-                        }
-                      : null;
-                  resolve({
-                    formatted_address: result.formatted_address || '',
-                    geometry: location ? { location: location } : null,
-                    address_components: mapAddressComponents(
-                      result.address_components
-                    ),
-                  });
-                  resetSessionToken();
                 }
-              );
-            });
+                
+                const result = {
+                  formatted_address: place.formattedAddress || '',
+                  geometry: location ? { location: location } : null,
+                  address_components: mapAddressComponents(
+                    place.addressComponents || []
+                  ),
+                };
+                console.log('[rocPlaces] Place API returning:', result);
+                resetSessionToken();
+                return result;
+              } catch (error) {
+                // Fallback to legacy API if new API fails
+                console.error('[rocPlaces] New Place API failed:', error);
+                console.error('[rocPlaces] Error name:', error?.name);
+                console.error('[rocPlaces] Error message:', error?.message);
+                console.error('[rocPlaces] Error stack:', error?.stack);
+                console.error('[rocPlaces] Place object:', place);
+                console.error('[rocPlaces] Fields requested:', fields);
+                console.error('[rocPlaces] PlaceId used:', placeId);
+                // Log additional error properties if available
+                if (error && typeof error === 'object') {
+                  console.error('[rocPlaces] Error properties:', Object.keys(error));
+                  for (const key in error) {
+                    if (error.hasOwnProperty(key)) {
+                      console.error(`[rocPlaces] Error.${key}:`, error[key]);
+                    }
+                  }
+                }
+              }
+            }
+            // Legacy PlacesService fallback
+            if (window.google.maps.places.PlacesService) {
+              console.log('[rocPlaces] Using legacy PlacesService');
+              return new Promise(function (resolve, reject) {
+                const div = document.createElement('div');
+                const placesService = new google.maps.places.PlacesService(div);
+                placesService.getDetails(
+                  {
+                    placeId: placeId,
+                    fields: ['address_components', 'geometry', 'formatted_address'],
+                    sessionToken: getSessionToken(),
+                  },
+                  function (result, status) {
+                    console.log('[rocPlaces] Legacy API status:', status);
+                    console.log('[rocPlaces] Legacy API result:', result ? 'received' : 'null');
+                    if (
+                      status !== google.maps.places.PlacesServiceStatus.OK ||
+                      !result
+                    ) {
+                      console.error('[rocPlaces] Legacy API error:', status);
+                      reject(status);
+                      resetSessionToken();
+                      return;
+                    }
+                    const location =
+                      result.geometry && result.geometry.location
+                        ? {
+                            lat: result.geometry.location.lat(),
+                            lng: result.geometry.location.lng(),
+                          }
+                        : null;
+                    const mappedResult = {
+                      formatted_address: result.formatted_address || '',
+                      geometry: location ? { location: location } : null,
+                      address_components: mapAddressComponents(
+                        result.address_components || []
+                      ),
+                    };
+                    console.log('[rocPlaces] Legacy API returning:', mappedResult);
+                    resetSessionToken();
+                    resolve(mappedResult);
+                  }
+                );
+              });
+            }
+            console.error('[rocPlaces] No place details API available');
+            return Promise.reject('No place details API available');
+          } catch (error) {
+            console.error('[rocPlaces] Error in placeDetails:', error);
+            return Promise.reject(error);
+          }
+        },
+      };
+    })();
+  </script>
+  <script>
+    // Helper functions for Dart JS interop to check Maps API availability
+    window.rocMapsAPI = {
+      isReady: function() {
+        return !!(window.google && 
+                  window.google.maps && 
+                  window.google.maps.Map &&
+                  typeof window.google.maps.Map === 'function' &&
+                  window.google.maps.LatLng &&
+                  typeof window.google.maps.LatLng === 'function');
+      },
+      getMapClass: function() {
+        return window.google?.maps?.Map;
+      },
+      getLatLngClass: function() {
+        return window.google?.maps?.LatLng;
+      },
+      getGeocoderClass: function() {
+        return window.google?.maps?.Geocoder;
+      },
+      getMapTypeId: function() {
+        return window.google?.maps?.MapTypeId;
+      },
+      getMapTypeIdRoadmap: function() {
+        return window.google?.maps?.MapTypeId?.ROADMAP;
+      },
+      getMapsObject: function() {
+        return window.google?.maps;
+      },
+      createLatLng: function(lat, lng) {
+        if (!window.google || !window.google.maps || !window.google.maps.LatLng) {
+          throw new Error('Google Maps LatLng not available');
+        }
+        return new window.google.maps.LatLng(lat, lng);
+      },
+      createMap: function(container, options) {
+        if (!window.google || !window.google.maps || !window.google.maps.Map) {
+          throw new Error('Google Maps Map not available');
+        }
+        return new window.google.maps.Map(container, options);
+      },
+      createMarker: function(options) {
+        if (!window.google || !window.google.maps || !window.google.maps.Marker) {
+          throw new Error('Google Maps Marker not available');
+        }
+        return new window.google.maps.Marker(options);
+      },
+      createMapWithClickListener: function(container, options, onClickCallback) {
+        if (!window.google || !window.google.maps || !window.google.maps.Map) {
+          throw new Error('Google Maps Map not available');
+        }
+        const map = new window.google.maps.Map(container, options);
+        
+        if (onClickCallback && typeof onClickCallback === 'function') {
+          map.addListener('click', function(event) {
+            const lat = event.latLng.lat();
+            const lng = event.latLng.lng();
+            onClickCallback(lat, lng);
           });
+        }
+        
+        return map;
+      },
+      createMapWithMultipleMarkers: function(container, options, markers, onMarkerClick) {
+        if (!window.google || !window.google.maps || !window.google.maps.Map) {
+          throw new Error('Google Maps Map not available');
+        }
+        
+        const map = new window.google.maps.Map(container, options);
+        const markerInstances = [];
+        
+        // Parse markers if it's a JSON string, otherwise use as-is
+        let markersArray = markers;
+        if (typeof markers === 'string') {
+          try {
+            markersArray = JSON.parse(markers);
+            console.log('[rocMapsAPI] Parsed JSON markers string, got', markersArray.length, 'markers');
+          } catch (e) {
+            console.error('[rocMapsAPI] Failed to parse markers JSON:', e);
+            return map;
+          }
+        }
+        
+        // Helper function to validate and convert coordinates
+        function validateCoordinate(value, min, max, name) {
+          console.log('[rocMapsAPI] Validating coordinate', name + ':', value, 'type:', typeof value);
+          const num = Number(value);
+          if (isNaN(num) || !isFinite(num)) {
+            console.warn('[rocMapsAPI] Invalid coordinate ' + name + ':', value, '(not a number, converted to:', num + ')');
+            return null;
+          }
+          if (num < min || num > max) {
+            console.warn('[rocMapsAPI] Invalid coordinate ' + name + ':', num, '(out of range: ' + min + ' to ' + max + ')');
+            return null;
+          }
+          return num;
+        }
+        
+        // Create markers
+        if (markersArray && Array.isArray(markersArray)) {
+          console.log('[rocMapsAPI] Creating map with', markersArray.length, 'markers');
+          let validMarkers = 0;
+          let skippedMarkers = 0;
+          
+          markersArray.forEach(function(markerData) {
+            // Validate and convert coordinates
+            const lat = validateCoordinate(markerData.lat, -90, 90, 'lat');
+            const lng = validateCoordinate(markerData.lng, -180, 180, 'lng');
+            
+            if (lat === null || lng === null) {
+              console.warn('[rocMapsAPI] Skipping invalid marker:', {
+                claimId: markerData.claimId,
+                claimNumber: markerData.claimNumber,
+                lat: markerData.lat,
+                lng: markerData.lng,
+                latType: typeof markerData.lat,
+                lngType: typeof markerData.lng,
+                fullMarkerData: JSON.stringify(markerData)
+              });
+              skippedMarkers++;
+              return; // Skip this marker
+            }
+            
+            try {
+              const marker = new window.google.maps.Marker({
+                position: {
+                  lat: lat,
+                  lng: lng
+                },
+                map: map,
+                title: markerData.title || markerData.claimNumber || '',
+                icon: {
+                  path: window.google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: markerData.color || '#FF0000',
+                  fillOpacity: 1,
+                  strokeColor: '#FFFFFF',
+                  strokeWeight: 2,
+                },
+                label: {
+                  text: markerData.claimNumber ? markerData.claimNumber.substring(0, 1).toUpperCase() : '',
+                  color: '#FFFFFF',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                }
+              });
+              
+              // Add click listener
+              if (onMarkerClick && markerData.claimId) {
+                marker.addListener('click', function() {
+                  if (typeof onMarkerClick === 'function') {
+                    onMarkerClick(markerData.claimId);
+                  } else if (typeof onMarkerClick === 'string') {
+                    // Callback is a string reference to a global function
+                    const callback = window[onMarkerClick];
+                    if (typeof callback === 'function') {
+                      callback(markerData.claimId);
+                    }
+                  }
+                });
+              }
+              
+              markerInstances.push(marker);
+              validMarkers++;
+            } catch (error) {
+              console.error('[rocMapsAPI] Error creating marker:', error, markerData);
+              skippedMarkers++;
+            }
+          });
+          
+          console.log('[rocMapsAPI] Marker creation complete:', validMarkers, 'valid,', skippedMarkers, 'skipped');
+        }
+        
+        // Fit bounds to show all markers if there are any
+        if (markerInstances.length > 0) {
+          const bounds = new window.google.maps.LatLngBounds();
+          markerInstances.forEach(function(marker) {
+            bounds.extend(marker.getPosition());
+          });
+          
+          // Only fit bounds if we have multiple markers, otherwise use initial center/zoom
+          if (markerInstances.length > 1) {
+            map.fitBounds(bounds);
+          }
+        }
+        
+        // Store markers in map instance for later updates
+        map._markers = markerInstances;
+        
+        return map;
+      },
+      updateMarkers: function(mapInstance, markers) {
+        if (!mapInstance || !mapInstance._markers) {
+          console.error('[rocMapsAPI] Map instance or markers not available');
+          return;
+        }
+        
+        // Parse markers if it's a JSON string, otherwise use as-is
+        let markersArray = markers;
+        if (typeof markers === 'string') {
+          try {
+            markersArray = JSON.parse(markers);
+            console.log('[rocMapsAPI] Parsed JSON markers string for update, got', markersArray.length, 'markers');
+          } catch (e) {
+            console.error('[rocMapsAPI] Failed to parse markers JSON:', e);
+            return;
+          }
+        }
+        
+        // Helper function to validate and convert coordinates
+        function validateCoordinate(value, min, max, name) {
+          console.log('[rocMapsAPI] Validating coordinate', name + ':', value, 'type:', typeof value);
+          const num = Number(value);
+          if (isNaN(num) || !isFinite(num)) {
+            console.warn('[rocMapsAPI] Invalid coordinate ' + name + ':', value, '(not a number, converted to:', num + ')');
+            return null;
+          }
+          if (num < min || num > max) {
+            console.warn('[rocMapsAPI] Invalid coordinate ' + name + ':', num, '(out of range: ' + min + ' to ' + max + ')');
+            return null;
+          }
+          return num;
+        }
+        
+        // Remove existing markers
+        mapInstance._markers.forEach(function(marker) {
+          marker.setMap(null);
+        });
+        mapInstance._markers = [];
+        
+        // Add new markers
+        if (markersArray && Array.isArray(markersArray)) {
+          console.log('[rocMapsAPI] Updating map with', markersArray.length, 'markers');
+          const bounds = new window.google.maps.LatLngBounds();
+          let validMarkers = 0;
+          let skippedMarkers = 0;
+          
+          markersArray.forEach(function(markerData) {
+            // Validate and convert coordinates
+            const lat = validateCoordinate(markerData.lat, -90, 90, 'lat');
+            const lng = validateCoordinate(markerData.lng, -180, 180, 'lng');
+            
+            if (lat === null || lng === null) {
+              console.warn('[rocMapsAPI] Skipping invalid marker in update:', {
+                claimId: markerData.claimId,
+                claimNumber: markerData.claimNumber,
+                lat: markerData.lat,
+                lng: markerData.lng,
+                latType: typeof markerData.lat,
+                lngType: typeof markerData.lng,
+                fullMarkerData: JSON.stringify(markerData)
+              });
+              skippedMarkers++;
+              return; // Skip this marker
+            }
+            
+            try {
+              const marker = new window.google.maps.Marker({
+                position: {
+                  lat: lat,
+                  lng: lng
+                },
+                map: mapInstance,
+                title: markerData.title || markerData.claimNumber || '',
+                icon: {
+                  path: window.google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: markerData.color || '#FF0000',
+                  fillOpacity: 1,
+                  strokeColor: '#FFFFFF',
+                  strokeWeight: 2,
+                },
+                label: {
+                  text: markerData.claimNumber ? markerData.claimNumber.substring(0, 1).toUpperCase() : '',
+                  color: '#FFFFFF',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                }
+              });
+              
+              bounds.extend(marker.getPosition());
+              mapInstance._markers.push(marker);
+              validMarkers++;
+            } catch (error) {
+              console.error('[rocMapsAPI] Error creating marker:', error, markerData);
+              skippedMarkers++;
+            }
+          });
+          
+          console.log('[rocMapsAPI] Marker update complete:', validMarkers, 'valid,', skippedMarkers, 'skipped');
+          
+          // Fit bounds to show all markers
+          if (mapInstance._markers.length > 0) {
+            if (mapInstance._markers.length > 1) {
+              mapInstance.fitBounds(bounds);
+            } else {
+              mapInstance.setCenter(mapInstance._markers[0].getPosition());
+            }
+          }
+        }
+      }
+    };
+
+    // Interactive Google Map widget functions
+    window.rocMap = (function () {
+      let mapInstances = {};
+      let mapIdCounter = 0;
+
+      function createMap(containerId, options) {
+        if (!window.google || !window.google.maps) {
+          console.error('[rocMap] Google Maps API not loaded');
+          return null;
+        }
+
+        const container = document.getElementById(containerId);
+        if (!container) {
+          console.error('[rocMap] Container not found:', containerId);
+          return null;
+        }
+
+        const mapOptions = {
+          center: options.center || { lat: -25.7, lng: 28.2 }, // Default to South Africa
+          zoom: options.zoom || 16,
+          mapTypeId: google.maps.MapTypeId.ROADMAP,
+          disableDefaultUI: false,
+          zoomControl: true,
+          mapTypeControl: false,
+          scaleControl: true,
+          streetViewControl: false,
+          rotateControl: false,
+          fullscreenControl: true,
+        };
+
+        const map = new google.maps.Map(container, mapOptions);
+        let marker = null;
+
+        // Add marker if coordinates provided
+        if (options.marker && options.marker.lat && options.marker.lng) {
+          marker = new google.maps.Marker({
+            position: { lat: options.marker.lat, lng: options.marker.lng },
+            map: map,
+            draggable: options.marker.draggable || false,
+            title: options.marker.title || 'Selected location',
+          });
+
+          // Center map on marker
+          map.setCenter(marker.getPosition());
+        }
+
+        // Handle map click
+        if (options.onClick) {
+          map.addListener('click', function (event) {
+            const lat = event.latLng.lat();
+            const lng = event.latLng.lng();
+            options.onClick(lat, lng);
+          });
+        }
+
+        // Handle marker drag
+        if (marker && options.onMarkerDrag) {
+          marker.addListener('dragend', function (event) {
+            const lat = event.latLng.lat();
+            const lng = event.latLng.lng();
+            options.onMarkerDrag(lat, lng);
+          });
+        }
+
+        return {
+          map: map,
+          marker: marker,
+          setCenter: function (lat, lng) {
+            const center = new google.maps.LatLng(lat, lng);
+            map.setCenter(center);
+            if (marker) {
+              marker.setPosition(center);
+            }
+          },
+          setMarker: function (lat, lng, draggable) {
+            const position = new google.maps.LatLng(lat, lng);
+            if (marker) {
+              marker.setPosition(position);
+              marker.setDraggable(draggable || false);
+            } else {
+              marker = new google.maps.Marker({
+                position: position,
+                map: map,
+                draggable: draggable || false,
+                title: 'Selected location',
+              });
+            }
+            map.setCenter(position);
+          },
+          removeMarker: function () {
+            if (marker) {
+              marker.setMap(null);
+              marker = null;
+            }
+          },
+          setZoom: function (zoom) {
+            map.setZoom(zoom);
+          },
+        };
+      }
+
+      return {
+        create: function (containerId, options) {
+          return createMap(containerId, options);
+        },
+        generateId: function () {
+          return 'roc-map-' + (++mapIdCounter);
         },
       };
     })();

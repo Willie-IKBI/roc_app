@@ -25,6 +25,17 @@ abstract class ClaimRepository {
     String? reason,
   });
 
+  Future<Result<Claim>> updateTechnician({
+    required String claimId,
+    String? technicianId,
+  });
+
+  Future<Result<Claim>> updateAppointment({
+    required String claimId,
+    DateTime? appointmentDate,
+    String? appointmentTime,
+  });
+
   Future<Result<bool>> claimExists({
     required String insurerId,
     required String claimNumber,

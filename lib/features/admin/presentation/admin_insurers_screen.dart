@@ -4,6 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/theme/design_tokens.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../../../core/utils/validators.dart';
 import '../../../domain/models/insurer.dart';
 import '../controller/insurers_controller.dart';
@@ -48,10 +52,16 @@ class _AdminInsurersScreenState extends ConsumerState<AdminInsurersScreen> {
             label: const Text('Queue'),
           ),
           const SizedBox(width: 12),
-          FilledButton.icon(
+          GlassButton.primary(
             onPressed: () => _showCreateDialog(context),
-            icon: const Icon(Icons.add_business_outlined),
-            label: const Text('Add insurer'),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add_business_outlined),
+                SizedBox(width: DesignTokens.spaceS),
+                Text('Add insurer'),
+              ],
+            ),
           ),
           const SizedBox(width: 16),
         ],
@@ -121,21 +131,11 @@ class _AdminInsurersScreenState extends ConsumerState<AdminInsurersScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextField(
+                        GlassInput.text(
+                          context: context,
                           controller: _searchController,
-                          decoration: InputDecoration(
-                            prefixIcon: const Icon(Icons.search),
-                            labelText: 'Search insurers',
-                            filled: true,
-                            fillColor: theme.colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.35),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(18),
-                              borderSide: BorderSide(
-                                color: theme.colorScheme.outline.withValues(alpha: 0.25),
-                              ),
-                            ),
-                          ),
+                          label: 'Search insurers',
+                          prefixIcon: const Icon(Icons.search),
                           onChanged: (_) => setState(() {}),
                         ),
                         const SizedBox(height: 24),
@@ -253,10 +253,7 @@ class _AdminInsurersScreenState extends ConsumerState<AdminInsurersScreen> {
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
+          GlassButton.primary(
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Delete'),
           ),
@@ -402,10 +399,16 @@ class _EmptyInsurers extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
-          FilledButton.icon(
+          GlassButton.primary(
             onPressed: () => Navigator.of(context).maybePop(),
-            icon: const Icon(Icons.add_business_outlined),
-            label: const Text('Capture first insurer'),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add_business_outlined),
+                SizedBox(width: DesignTokens.spaceS),
+                Text('Capture first insurer'),
+              ],
+            ),
           ),
         ],
       ),
@@ -441,10 +444,16 @@ class _InsurersError extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          FilledButton.icon(
+          GlassButton.primary(
             onPressed: onRetry,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.refresh),
+                SizedBox(width: DesignTokens.spaceS),
+                Text('Retry'),
+              ],
+            ),
           ),
         ],
       ),
@@ -512,11 +521,10 @@ class _InsurerDialogState extends State<_InsurerDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextFormField(
+            GlassInput.textForm(
+              context: context,
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-              ),
+              label: 'Name',
               validator: (value) {
                 final trimmed = value?.trim() ?? '';
                 if (trimmed.isEmpty) {
@@ -526,11 +534,10 @@ class _InsurerDialogState extends State<_InsurerDialog> {
               },
             ),
             const SizedBox(height: 16),
-            TextFormField(
+            GlassInput.textForm(
+              context: context,
               controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Contact email',
-              ),
+              label: 'Contact email',
               validator: (value) {
                 final trimmed = value?.trim() ?? '';
                 if (trimmed.isEmpty) {
@@ -543,11 +550,10 @@ class _InsurerDialogState extends State<_InsurerDialog> {
               },
             ),
             const SizedBox(height: 16),
-            TextFormField(
+            GlassInput.textForm(
+              context: context,
               controller: _phoneController,
-              decoration: const InputDecoration(
-                labelText: 'Contact phone',
-              ),
+              label: 'Contact phone',
               validator: (value) {
                 final trimmed = value?.trim() ?? '';
                 if (trimmed.isEmpty) {
@@ -697,12 +703,18 @@ class _SupportCard extends StatelessWidget {
             spacing: 12,
             runSpacing: 12,
             children: [
-              FilledButton.icon(
+              GlassButton.primary(
                 onPressed: () => launchUrl(
                   Uri.parse('mailto:info@ikbi.co.za?subject=Insurer onboarding help'),
                 ),
-                icon: const Icon(Icons.email_outlined),
-                label: const Text('Email support'),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.email_outlined),
+                    SizedBox(width: DesignTokens.spaceS),
+                    Text('Email support'),
+                  ],
+                ),
               ),
               OutlinedButton.icon(
                 onPressed: () => launchUrl(

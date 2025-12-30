@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/strings/app_strings.dart';
+import '../../../core/theme/design_tokens.dart';
+import '../../../core/widgets/glass_badge.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
 import '../../../domain/models/claim.dart';
 import '../../../domain/models/claim_item.dart';
 import '../../../domain/models/claim_status_change.dart';
@@ -13,6 +18,9 @@ import '../../../domain/value_objects/contact_method.dart';
 import '../controller/agent_lookup_provider.dart';
 import '../../claims/controller/detail_controller.dart';
 import '../../claims/controller/reference_data_providers.dart';
+import '../../claims/controller/technician_controller.dart';
+import 'widgets/technician_selector.dart';
+import 'widgets/appointment_picker.dart';
 
 class ClaimDetailScreen extends ConsumerWidget {
   const ClaimDetailScreen({required this.claimId, super.key});
@@ -36,10 +44,12 @@ class ClaimDetailScreen extends ConsumerWidget {
         orElse: () => null,
       );
     }
-    final clientName = claimData?.client?.fullName?.trim();
+    final clientName = claimData != null 
+        ? (claimData.client?.fullName ?? '').trim()
+        : null;
     final titleParts = <String>[];
-    if (resolvedInsurer != null && resolvedInsurer!.isNotEmpty) {
-      titleParts.add(resolvedInsurer!);
+    if (resolvedInsurer != null && resolvedInsurer.isNotEmpty) {
+      titleParts.add(resolvedInsurer);
     }
     if (clientName != null && clientName.isNotEmpty) {
       titleParts.add(clientName);
@@ -61,10 +71,10 @@ class ClaimDetailScreen extends ConsumerWidget {
       final state = ref.read(claimDetailControllerProvider(claimId));
       state.when(
         data: (_) => messenger.showSnackBar(
-          const SnackBar(content: Text('Contact attempt logged')),
+          const SnackBar(content: Text(AppStrings.contactAttemptLogged)),
         ),
         error: (error, _) => messenger.showSnackBar(
-          SnackBar(content: Text('Failed to log attempt: $error')),
+          SnackBar(content: Text('${AppStrings.contactAttemptFailed}: $error')),
         ),
         loading: () {},
       );
@@ -95,11 +105,11 @@ class ClaimDetailScreen extends ConsumerWidget {
       state.when(
         data: (_) => messenger.showSnackBar(
           SnackBar(
-            content: Text('Status changed to ${result.newStatus.label}'),
+            content: Text('${AppStrings.statusChanged}: ${result.newStatus.label}'),
           ),
         ),
         error: (error, _) => messenger.showSnackBar(
-          SnackBar(content: Text('Failed to change status: $error')),
+          SnackBar(content: Text('${AppStrings.statusChangeFailed}: $error')),
         ),
         loading: () {},
       );
@@ -117,7 +127,7 @@ class ClaimDetailScreen extends ConsumerWidget {
           bottom: TabBar(
             labelColor: Theme.of(context).colorScheme.onPrimary,
             unselectedLabelColor:
-                Theme.of(context).colorScheme.onPrimary.withOpacity(0.65),
+                Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.65),
             indicatorColor: Colors.white,
             indicatorWeight: 3,
             tabs: const [
@@ -143,6 +153,8 @@ class ClaimDetailScreen extends ConsumerWidget {
                   onLogContact: () => logContactAttempt(detail),
                     onChangeStatus: () => changeStatus(detail),
                     agentName: resolvedAgentName,
+                    claimId: claimId,
+                    notifier: notifier,
                 ),
                 _ItemsTab(items: detail.items),
                 _ContactAttemptsTab(attempts: detail.contactAttempts),
@@ -169,6 +181,8 @@ class _OverviewTab extends StatelessWidget {
     required this.onLogContact,
     required this.onChangeStatus,
     this.agentName,
+    required this.claimId,
+    required this.notifier,
   });
 
   final Claim detail;
@@ -176,6 +190,8 @@ class _OverviewTab extends StatelessWidget {
   final VoidCallback onLogContact;
   final VoidCallback onChangeStatus;
   final String? agentName;
+  final String claimId;
+  final ClaimDetailController notifier;
 
   @override
   Widget build(BuildContext context) {
@@ -199,16 +215,14 @@ class _OverviewTab extends StatelessWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+        GlassCard(
+          child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Claim', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignTokens.spaceM),
                 _KeyValueRow(label: 'Claim number', value: detail.claimNumber),
                 _KeyValueRow(
                   label: 'Status',
@@ -226,19 +240,60 @@ class _OverviewTab extends StatelessWidget {
                           ? 'Unassigned'
                           : detail.agentId!),
                 ),
+                if (detail.technicianId != null || detail.appointmentDate != null) ...[
+                  const SizedBox(height: DesignTokens.spaceM),
+                  const Divider(),
+                  const SizedBox(height: DesignTokens.spaceM),
+                  Text('Technician & Appointment', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: DesignTokens.spaceS),
+                  if (detail.technicianId != null)
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final techniciansAsync = ref.watch(techniciansProvider);
+                        return techniciansAsync.when(
+                          data: (technicians) {
+                            final technician = technicians.firstWhere(
+                              (t) => t.id == detail.technicianId,
+                              orElse: () => technicians.first,
+                            );
+                            return _KeyValueRow(
+                              label: 'Technician',
+                              value: technician.fullName,
+                            );
+                          },
+                          loading: () => const _KeyValueRow(
+                            label: 'Technician',
+                            value: 'Loading...',
+                          ),
+                          error: (_, __) => const _KeyValueRow(
+                            label: 'Technician',
+                            value: 'Unknown',
+                          ),
+                        );
+                      },
+                    ),
+                  if (detail.appointmentDate != null)
+                    _KeyValueRow(
+                      label: 'Appointment Date',
+                      value: detail.appointmentDate!.toLocal().toString().split(' ')[0],
+                    ),
+                  if (detail.appointmentTime != null)
+                    _KeyValueRow(
+                      label: 'Appointment Time',
+                      value: detail.appointmentTime!,
+                    ),
+                ],
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('SLA', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 12),
+        const SizedBox(height: DesignTokens.spaceM),
+        GlassCard(
+          padding: const EdgeInsets.all(DesignTokens.spaceM),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('SLA', style: theme.textTheme.titleMedium),
+                const SizedBox(height: DesignTokens.spaceM),
                 Text(
                   'Started at ${detail.slaStartedAt.toLocal()}',
                   style: theme.textTheme.bodySmall,
@@ -258,32 +313,47 @@ class _OverviewTab extends StatelessWidget {
                   '$elapsedMinutes min elapsed • Target ${slaTarget.inMinutes} min',
                   style: theme.textTheme.bodySmall,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: DesignTokens.spaceM),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: DesignTokens.spaceS,
+                  runSpacing: DesignTokens.spaceS,
                   children: [
-                    FilledButton.icon(
+                    GlassButton.primary(
                       onPressed: isBusy ? null : onLogContact,
-                      icon: const Icon(Icons.call_outlined),
-                      label: const Text('Contact client'),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.call_outlined),
+                          SizedBox(width: DesignTokens.spaceS),
+                          Text('Contact client'),
+                        ],
+                      ),
                     ),
-                    OutlinedButton.icon(
+                    GlassButton.outlined(
                       onPressed: isBusy ? null : onChangeStatus,
-                      icon: const Icon(Icons.swap_horiz),
-                      label: const Text('Change status'),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.swap_horiz),
+                          SizedBox(width: DesignTokens.spaceS),
+                          Text('Change status'),
+                        ],
+                      ),
                     ),
-                    Chip(
-                      avatar: Icon(
-                        Icons.timer_outlined,
-                        size: 16,
-                        color: slaColor,
+                    GlassButton.outlined(
+                      onPressed: isBusy ? null : () => _showTechnicianDialog(context, detail),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.person_outline),
+                          SizedBox(width: DesignTokens.spaceS),
+                          Text('Assign technician'),
+                        ],
                       ),
-                      backgroundColor: slaColor.withValues(alpha: 0.15),
-                      label: Text(isBreached ? 'SLA breached' : 'Within SLA'),
-                      labelStyle: theme.textTheme.bodySmall?.copyWith(
-                        color: slaColor,
-                      ),
+                    ),
+                    GlassBadge.custom(
+                      label: isBreached ? 'SLA breached' : 'Within SLA',
+                      color: slaColor,
                     ),
                     if (detail.latestContact != null)
                       Chip(
@@ -297,16 +367,13 @@ class _OverviewTab extends StatelessWidget {
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Client', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 12),
+        const SizedBox(height: DesignTokens.spaceM),
+        GlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Client', style: theme.textTheme.titleMedium),
+                const SizedBox(height: DesignTokens.spaceM),
                 _KeyValueRow(
                   label: 'Name',
                   value: detail.client?.fullName ?? 'Unknown client',
@@ -322,16 +389,13 @@ class _OverviewTab extends StatelessWidget {
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Address', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 12),
+        const SizedBox(height: DesignTokens.spaceM),
+        GlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Address', style: theme.textTheme.titleMedium),
+                const SizedBox(height: DesignTokens.spaceM),
                 _KeyValueRow(
                   label: 'Street',
                   value: detail.address?.street ?? '–',
@@ -351,16 +415,13 @@ class _OverviewTab extends StatelessWidget {
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Notes', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 12),
+        const SizedBox(height: DesignTokens.spaceM),
+        GlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Notes', style: theme.textTheme.titleMedium),
+                const SizedBox(height: DesignTokens.spaceM),
                 Text(
                   detail.notesInternal ?? 'No internal notes captured.',
                   style: theme.textTheme.bodyMedium,
@@ -373,8 +434,20 @@ class _OverviewTab extends StatelessWidget {
               ],
             ),
           ),
-        ),
       ],
+    );
+  }
+
+  void _showTechnicianDialog(BuildContext context, Claim detail) {
+    showDialog(
+      context: context,
+      builder: (context) => _TechnicianAppointmentDialog(
+        claimId: claimId,
+        notifier: notifier,
+        currentTechnicianId: detail.technicianId,
+        currentAppointmentDate: detail.appointmentDate,
+        currentAppointmentTime: detail.appointmentTime,
+      ),
     );
   }
 }
@@ -390,12 +463,12 @@ class _ItemsTab extends StatelessWidget {
       return const _EmptyState(message: 'No items captured yet.');
     }
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
       itemCount: items.length,
       itemBuilder: (context, index) {
         final item = items[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
+        return GlassCard(
+          margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
           child: ListTile(
             title: Text(item.brand),
             subtitle: Column(
@@ -426,12 +499,12 @@ class _ContactAttemptsTab extends StatelessWidget {
       return const _EmptyState(message: 'No contact attempts logged yet.');
     }
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
       itemCount: attempts.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, __) => const SizedBox(height: DesignTokens.spaceS),
       itemBuilder: (context, index) {
         final attempt = attempts[index];
-        return Card(
+        return GlassCard(
           child: ListTile(
             title: Text(
               '${attempt.method.label} • ${attempt.outcome.name.replaceAll('_', ' ')}',
@@ -463,7 +536,7 @@ class _StatusHistoryTab extends ConsumerWidget {
       return const _EmptyState(message: 'No status changes yet.');
     }
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
       itemCount: history.length,
       itemBuilder: (context, index) {
         final change = history[index];
@@ -471,8 +544,8 @@ class _StatusHistoryTab extends ConsumerWidget {
         final changedByName = agentNameAsync.asData?.value ??
             change.changedBy ??
             'System';
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
+        return GlassCard(
+          margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
           child: ListTile(
             title: Text(
               '${change.fromStatus.name} → ${change.toStatus.name}',
@@ -784,5 +857,103 @@ class _ChangeStatusResult {
 
   final ClaimStatus newStatus;
   final String? reason;
+}
+
+class _TechnicianAppointmentDialog extends ConsumerStatefulWidget {
+  const _TechnicianAppointmentDialog({
+    required this.claimId,
+    required this.notifier,
+    this.currentTechnicianId,
+    this.currentAppointmentDate,
+    this.currentAppointmentTime,
+  });
+
+  final String claimId;
+  final ClaimDetailController notifier;
+  final String? currentTechnicianId;
+  final DateTime? currentAppointmentDate;
+  final String? currentAppointmentTime;
+
+  @override
+  ConsumerState<_TechnicianAppointmentDialog> createState() => _TechnicianAppointmentDialogState();
+}
+
+class _TechnicianAppointmentDialogState extends ConsumerState<_TechnicianAppointmentDialog> {
+  String? _selectedTechnicianId;
+  DateTime? _selectedAppointmentDate;
+  String? _selectedAppointmentTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedTechnicianId = widget.currentTechnicianId;
+    _selectedAppointmentDate = widget.currentAppointmentDate;
+    _selectedAppointmentTime = widget.currentAppointmentTime;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Assign Technician & Appointment'),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TechnicianSelector(
+              selectedTechnicianId: _selectedTechnicianId,
+              appointmentDate: _selectedAppointmentDate,
+              onTechnicianSelected: (technicianId) {
+                setState(() {
+                  _selectedTechnicianId = technicianId;
+                });
+              },
+            ),
+            const SizedBox(height: DesignTokens.spaceM),
+            AppointmentPicker(
+              selectedDate: _selectedAppointmentDate,
+              selectedTime: _selectedAppointmentTime,
+              onDateSelected: (date) {
+                setState(() {
+                  _selectedAppointmentDate = date;
+                });
+              },
+              onTimeSelected: (time) {
+                setState(() {
+                  _selectedAppointmentTime = time;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () async {
+            await widget.notifier.updateTechnician(
+              claimId: widget.claimId,
+              technicianId: _selectedTechnicianId,
+            );
+            await widget.notifier.updateAppointment(
+              claimId: widget.claimId,
+              appointmentDate: _selectedAppointmentDate,
+              appointmentTime: _selectedAppointmentTime,
+            );
+            if (!context.mounted) return;
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Technician and appointment updated')),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 

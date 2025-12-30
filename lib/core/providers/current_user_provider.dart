@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,7 +10,39 @@ part 'current_user_provider.g.dart';
 @Riverpod(keepAlive: true)
 Stream<AuthState> authChanges(Ref ref) {
   final client = ref.watch(supabaseClientProvider);
-  return client.auth.onAuthStateChange;
+  return client.auth.onAuthStateChange.map((authState) {
+    // Log auth state changes for debugging token expiration issues
+    developer.log(
+      'Auth state changed: ${authState.event.name} - User: ${authState.session?.user.id ?? 'null'}',
+      name: 'AuthState',
+    );
+    
+    // Log specific events that might indicate token expiration
+    if (authState.event == AuthChangeEvent.signedOut) {
+      developer.log(
+        'User signed out. Session expired: ${authState.session == null}',
+        name: 'AuthState',
+      );
+    } else if (authState.event == AuthChangeEvent.tokenRefreshed) {
+      developer.log(
+        'Token refreshed successfully',
+        name: 'AuthState',
+      );
+    }
+    
+    return authState;
+  });
+}
+
+/// Tracks whether the last logout was due to token expiration
+@riverpod
+class SessionExpirationReason extends _$SessionExpirationReason {
+  @override
+  bool build() => false;
+  
+  void setExpired(bool expired) {
+    state = expired;
+  }
 }
 
 @Riverpod(keepAlive: true)
@@ -17,7 +50,18 @@ Future<Profile?> currentUser(Ref ref) async {
   ref.watch(authChangesProvider);
   final client = ref.watch(supabaseClientProvider);
   final user = client.auth.currentUser;
+  
+  // If user is null, check if we can recover the session
   if (user == null) {
+    final session = client.auth.currentSession;
+    if (session != null) {
+      // Session exists but user is null - might be a transient issue
+      developer.log(
+        'User is null but session exists, attempting to recover',
+        name: 'CurrentUser',
+      );
+      // The session will be validated by Supabase on next request
+    }
     return null;
   }
 

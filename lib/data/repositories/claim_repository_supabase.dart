@@ -110,6 +110,52 @@ class ClaimRepositorySupabase implements ClaimRepository {
     return _loadClaim(claimId);
   }
 
+  @override
+  Future<Result<Claim>> updateTechnician({
+    required String claimId,
+    String? technicianId,
+  }) async {
+    final claimRowResult = await _remote.fetchClaim(claimId);
+    if (claimRowResult.isErr) {
+      return Result.err(claimRowResult.error);
+    }
+
+    final updateResult = await _remote.updateTechnician(
+      claimId: claimId,
+      tenantId: claimRowResult.data.tenantId,
+      technicianId: technicianId,
+    );
+    if (updateResult.isErr) {
+      return Result.err(updateResult.error);
+    }
+
+    return _loadClaim(claimId);
+  }
+
+  @override
+  Future<Result<Claim>> updateAppointment({
+    required String claimId,
+    DateTime? appointmentDate,
+    String? appointmentTime,
+  }) async {
+    final claimRowResult = await _remote.fetchClaim(claimId);
+    if (claimRowResult.isErr) {
+      return Result.err(claimRowResult.error);
+    }
+
+    final updateResult = await _remote.updateAppointment(
+      claimId: claimId,
+      tenantId: claimRowResult.data.tenantId,
+      appointmentDate: appointmentDate,
+      appointmentTime: appointmentTime,
+    );
+    if (updateResult.isErr) {
+      return Result.err(updateResult.error);
+    }
+
+    return _loadClaim(claimId);
+  }
+
   Future<Result<Claim>> _loadClaim(String claimId) async {
     final claimRowResult = await _remote.fetchClaim(claimId);
 

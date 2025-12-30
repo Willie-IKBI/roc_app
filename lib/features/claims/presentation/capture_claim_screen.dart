@@ -10,7 +10,13 @@ import 'package:google_place/google_place.dart';
 import '../../../core/config/env.dart';
 import '../../../core/errors/domain_error.dart';
 import '../../../core/providers/current_user_provider.dart';
+import '../../../core/strings/app_strings.dart';
+import '../../../core/theme/design_tokens.dart';
 import '../../../core/theme/roc_color_scheme.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_dialog.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../../../core/utils/places_web_service.dart';
 import '../../../core/utils/validators.dart';
 import '../../../data/repositories/claim_repository_supabase.dart';
@@ -18,43 +24,22 @@ import '../../../domain/models/claim_draft.dart';
 import '../../../domain/value_objects/claim_enums.dart';
 import '../../claims/controller/capture_controller.dart';
 import '../../claims/controller/reference_data_providers.dart';
+import 'widgets/technician_selector.dart';
+import 'widgets/appointment_picker.dart';
 
 enum AddressMode { existing, newAddress }
+enum AddressInputMode { search, manual, gps }
 
+/// Helper function for capture claim field decoration - uses GlassInput
 InputDecoration buildCaptureFieldDecoration(
   BuildContext context,
   String label, {
   String? hint,
 }) {
-  final theme = Theme.of(context);
-  final outline = theme.colorScheme.outlineVariant.withValues(alpha: 0.28);
-  return InputDecoration(
-    labelText: label,
-    hintText: hint,
-    filled: true,
-    fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
-      alpha: 0.35,
-    ),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(color: outline),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(color: outline),
-    ),
-    disabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(color: outline.withValues(alpha: 0.15)),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.8),
-    ),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-    labelStyle: theme.textTheme.bodyMedium?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    ),
+  return GlassInput.decoration(
+    context: context,
+    label: label,
+    hint: hint,
   );
 }
 
@@ -107,13 +92,17 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
   DamageCause _selectedDamageCause = DamageCause.other;
 
   AddressMode _addressMode = AddressMode.newAddress;
-  bool _useManualAddressEntry = false;
+  AddressInputMode _addressInputMode = AddressInputMode.search;
   bool _includeServiceProvider = false;
   String? _selectedInsurerLabel;
+  String? _selectedTechnicianId;
+  DateTime? _selectedAppointmentDate;
+  String? _selectedAppointmentTime;
 
   GooglePlace? _googlePlace;
   Timer? _addressSearchDebounce;
   List<_Prediction> _addressPredictions = [];
+  bool _isLoadingAutocomplete = false;
   double? _selectedLat;
   double? _selectedLng;
   String? _selectedPlaceId;
@@ -126,6 +115,9 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
   String? _autoCity;
   String? _autoProvince;
   String? _autoPostalCode;
+  final _gpsCoordinateController = TextEditingController();
+  String? _gpsCoordinateError;
+  bool _isReverseGeocoding = false;
 
   final List<_ClaimItemFormState> _items = [];
 
@@ -146,6 +138,207 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
   }
 
   Future<void> _checkForExistingAddressMatch(String placeId) async {}
+
+  /// Parses GPS coordinates from text input.
+  /// Supports multiple formats:
+  /// - "-26.2041, 28.0473" (comma-separated)
+  /// - "lat: -26.2041, lng: 28.0473" (labeled)
+  /// - "-26.2041,28.0473" (no spaces)
+  /// - "-26.2041 28.0473" (space-separated)
+  /// Returns a map with 'lat' and 'lng' keys, or null if parsing fails.
+  Map<String, double>? _parseGpsCoordinates(String input) {
+    if (input.trim().isEmpty) {
+      return null;
+    }
+
+    try {
+      // Remove common prefixes and clean up
+      String cleaned = input.trim();
+      
+      // Try to extract lat and lng from labeled format: "lat: -26.2041, lng: 28.0473"
+      final labeledPattern = RegExp(
+        r'(?:lat(?:itude)?\s*:?\s*)?(-?\d+\.?\d*)[,\s]+(?:lng|lon|longitude)\s*:?\s*(-?\d+\.?\d*)',
+        caseSensitive: false,
+      );
+      final labeledMatch = labeledPattern.firstMatch(cleaned);
+      if (labeledMatch != null) {
+        final lat = double.tryParse(labeledMatch.group(1) ?? '');
+        final lng = double.tryParse(labeledMatch.group(2) ?? '');
+        if (lat != null && lng != null) {
+          if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            return {'lat': lat, 'lng': lng};
+          }
+        }
+      }
+
+      // Try comma-separated or space-separated: "-26.2041, 28.0473" or "-26.2041 28.0473"
+      final parts = cleaned.split(RegExp(r'[,\s]+')).where((p) => p.trim().isNotEmpty).toList();
+      if (parts.length >= 2) {
+        final lat = double.tryParse(parts[0].trim());
+        final lng = double.tryParse(parts[1].trim());
+        if (lat != null && lng != null) {
+          if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+            return {'lat': lat, 'lng': lng};
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error parsing GPS coordinates: $e');
+      }
+      return null;
+    }
+  }
+
+  void _handleGpsCoordinateInput(String value) {
+    setState(() {
+      _gpsCoordinateError = null;
+    });
+
+    if (value.trim().isEmpty) {
+      setState(() {
+        _selectedLat = null;
+        _selectedLng = null;
+        _staticMapUrl = null;
+      });
+      _refreshAddressDialog();
+      return;
+    }
+
+    final coords = _parseGpsCoordinates(value);
+    if (coords != null) {
+      setState(() {
+        _selectedLat = coords['lat'];
+        _selectedLng = coords['lng'];
+        if (_selectedLat != null && _selectedLng != null) {
+          _staticMapUrl = _buildStaticMapUrl(_selectedLat!, _selectedLng!);
+        }
+        _gpsCoordinateError = null;
+      });
+      _refreshAddressDialog();
+    } else {
+      setState(() {
+        _gpsCoordinateError = 'Invalid format. Use: "lat, lng" or "lat: X, lng: Y"';
+        _selectedLat = null;
+        _selectedLng = null;
+        _staticMapUrl = null;
+      });
+      _refreshAddressDialog();
+    }
+  }
+
+  Future<void> _reverseGeocodeCoordinates() async {
+    if (_selectedLat == null || _selectedLng == null) return;
+    if (!_useWebPlaces) return;
+
+    setState(() {
+      _isReverseGeocoding = true;
+    });
+    _refreshAddressDialog();
+
+    try {
+      await PlacesWebService.ensureLoaded(Env.googleMapsApiKey);
+      final result = await PlacesWebService.reverseGeocode(_selectedLat!, _selectedLng!);
+      
+      if (result != null && mounted) {
+        // Parse address components similar to _selectPrediction
+        final rawComponents = (result['address_components'] as List<dynamic>? ?? []);
+        final components = rawComponents
+            .map((item) {
+              final map = Map<String, dynamic>.from(item as Map);
+              return _AddressComponent(
+                longName: (map['long_name'] as String?) ?? '',
+                types: List<String>.from(map['types'] ?? const []),
+              );
+            })
+            .toList(growable: false);
+
+        String? componentFor(String type) {
+          for (final component in components) {
+            if (component.types.contains(type)) {
+              return component.longName;
+            }
+          }
+          return null;
+        }
+
+        final formattedAddress = result['formatted_address'] as String? ?? '';
+        final fallbackParts = formattedAddress.split(',');
+        String fallbackPart(int index) =>
+            index < fallbackParts.length ? fallbackParts[index].trim() : '';
+
+        final streetNumber = componentFor('street_number') ?? '';
+        final route = componentFor('route') ?? '';
+        final suburb =
+            componentFor('sublocality') ??
+            componentFor('sublocality_level_1') ??
+            componentFor('neighborhood') ??
+            fallbackPart(1);
+        final city =
+            componentFor('locality') ??
+            componentFor('administrative_area_level_3') ??
+            componentFor('administrative_area_level_2') ??
+            fallbackPart(2);
+        final province =
+            componentFor('administrative_area_level_1') ?? fallbackPart(3);
+        final postalCode = componentFor('postal_code') ?? '';
+        final estateCandidate =
+            componentFor('premise') ?? componentFor('subpremise');
+
+        final streetBase = [
+          streetNumber,
+          route,
+        ].where((part) => part.trim().isNotEmpty).join(' ').trim();
+        final fallbackStreet = fallbackPart(0);
+        final street = streetBase.isNotEmpty ? streetBase : fallbackStreet;
+
+        setState(() {
+          _addressComplexController.text = estateCandidate ?? '';
+          _addressStreetController.text = street;
+          _addressSuburbController.text = suburb;
+          _addressCityController.text = city;
+          _addressProvinceController.text = province;
+          _addressPostalCodeController.text = postalCode;
+          _selectedPlaceDescription = formattedAddress;
+          _isReverseGeocoding = false;
+          // Build static map URL after successful reverse geocoding
+          if (_selectedLat != null && _selectedLng != null) {
+            _staticMapUrl = _buildStaticMapUrl(_selectedLat!, _selectedLng!);
+          }
+        });
+        _maybeApplyEstateFromComponents(estateCandidate);
+        _refreshAddressDialog();
+      } else {
+        setState(() {
+          _isReverseGeocoding = false;
+        });
+        _refreshAddressDialog();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not reverse geocode coordinates. Please enter address manually.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      setState(() {
+        _isReverseGeocoding = false;
+      });
+      _refreshAddressDialog();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error reverse geocoding: $error'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
 
   void _maybeApplyEstateFromComponents(String? candidate) {
     final value = candidate?.trim();
@@ -175,6 +368,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
 
   bool get _hasCapturedAddress {
     return (_selectedPlaceId != null) ||
+        (_selectedLat != null && _selectedLng != null) ||
         _addressStreetController.text.trim().isNotEmpty ||
         _addressSuburbController.text.trim().isNotEmpty ||
         _addressCityController.text.trim().isNotEmpty ||
@@ -201,6 +395,8 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
     _addressCityController.dispose();
     _addressProvinceController.dispose();
     _addressPostalCodeController.dispose();
+    _addressNotesController.dispose();
+    _gpsCoordinateController.dispose();
     _providerCompanyController.dispose();
     _providerContactNameController.dispose();
     _providerContactPhoneController.dispose();
@@ -265,8 +461,10 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
     _addressProvinceController.clear();
     _addressPostalCodeController.clear();
     _addressNotesController.clear();
+    _gpsCoordinateController.clear();
     _selectedEstateId = null;
-    _useManualAddressEntry = false;
+    _addressInputMode = AddressInputMode.search;
+    _gpsCoordinateError = null;
     _clearGoogleSelection();
     _addressDialogSetState?.call(() {});
   }
@@ -338,9 +536,27 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
   Future<void> _handleAddressSearch(String value) async {
     if (!_useWebPlaces && _googlePlace == null) return;
     _addressSearchDebounce?.cancel();
+    
+    // Clear loading state immediately when user types
+    if (value.trim().isEmpty) {
+      setState(() {
+        _addressPredictions = [];
+        _isLoadingAutocomplete = false;
+      });
+      _refreshAddressDialog();
+      return;
+    }
+    
+    // Set loading state
+    setState(() => _isLoadingAutocomplete = true);
+    _refreshAddressDialog();
+    
     _addressSearchDebounce = Timer(const Duration(milliseconds: 350), () async {
       if (value.trim().isEmpty) {
-        setState(() => _addressPredictions = []);
+        setState(() {
+          _addressPredictions = [];
+          _isLoadingAutocomplete = false;
+        });
         _refreshAddressDialog();
         return;
       }
@@ -348,93 +564,97 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
         try {
           await PlacesWebService.ensureLoaded(Env.googleMapsApiKey);
           final results = await PlacesWebService.autocomplete(value);
-          setState(() {
-            _addressPredictions = results
-                .map(_Prediction.fromWebJson)
-                .whereType<_Prediction>()
-                .toList(growable: false);
-          });
-          _refreshAddressDialog();
-        } catch (_) {
-          setState(() => _addressPredictions = []);
-          _refreshAddressDialog();
-        }
-      } else {
-        final response = await _googlePlace!.autocomplete.get(
-          value,
-          language: 'en',
-          components: [Component('country', 'za')],
-        );
-
-        setState(() {
-          final predictions =
-              response?.predictions ?? const <AutocompletePrediction>[];
-          _addressPredictions = predictions
-              .map(_Prediction.fromMobile)
+          if (kDebugMode) {
+            print('[CaptureClaim] Received ${results.length} results from PlacesWebService');
+          }
+          final predictions = results
+              .map(_Prediction.fromWebJson)
               .whereType<_Prediction>()
               .toList(growable: false);
-        });
-        _refreshAddressDialog();
+          if (kDebugMode) {
+            print('[CaptureClaim] Created ${predictions.length} predictions after conversion');
+          }
+          setState(() {
+            _addressPredictions = predictions;
+            _isLoadingAutocomplete = false;
+          });
+          _refreshAddressDialog();
+        } catch (error) {
+          setState(() {
+            _addressPredictions = [];
+            _isLoadingAutocomplete = false;
+          });
+          _refreshAddressDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Unable to search addresses. Please try again or enter the address manually.',
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      } else {
+        try {
+          final response = await _googlePlace!.autocomplete.get(
+            value,
+            language: 'en',
+            components: [Component('country', 'za')],
+          );
+
+          setState(() {
+            final predictions =
+                response?.predictions ?? const <AutocompletePrediction>[];
+            _addressPredictions = predictions
+                .map(_Prediction.fromMobile)
+                .whereType<_Prediction>()
+                .toList(growable: false);
+            _isLoadingAutocomplete = false;
+          });
+          _refreshAddressDialog();
+        } catch (error) {
+          setState(() {
+            _addressPredictions = [];
+            _isLoadingAutocomplete = false;
+          });
+          _refreshAddressDialog();
+        }
       }
     });
   }
 
   Future<void> _showAddressDialog() async {
     final snapshot = _captureAddressSnapshot();
-    final saved = await showDialog<bool>(
+    final saved = await showGlassDialog<bool>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             _addressDialogSetState = setModalState;
-            return Dialog(
-              insetPadding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Address details',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            tooltip: 'Close',
-                            onPressed: () => Navigator.of(context).pop(false),
-                          ),
-                        ],
-                      ),
-                      const Divider(),
-                      Flexible(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.only(top: 16, bottom: 8),
-                          child: _buildAddressDialogContent(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          const SizedBox(width: 12),
-                          FilledButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Save address'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+            return ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: GlassDialog(
+                title: Text(
+                  'Address details',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
+                content: SingleChildScrollView(
+                  padding: const EdgeInsets.only(top: 8, bottom: 8),
+                  child: _buildAddressDialogContent(),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  GlassButton.primary(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Save address'),
+                  ),
+                ],
               ),
             );
           },
@@ -468,35 +688,44 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
           Row(
             children: [
               Expanded(
-                child: SegmentedButton<bool>(
+                child: SegmentedButton<AddressInputMode>(
                   segments: const [
-                    ButtonSegment<bool>(
-                      value: false,
+                    ButtonSegment<AddressInputMode>(
+                      value: AddressInputMode.search,
                       label: Text('Search via Google Maps'),
                       icon: Icon(Icons.search),
                     ),
-                    ButtonSegment<bool>(
-                      value: true,
+                    ButtonSegment<AddressInputMode>(
+                      value: AddressInputMode.manual,
                       label: Text('Enter manually'),
                       icon: Icon(Icons.edit_location_alt),
                     ),
+                    ButtonSegment<AddressInputMode>(
+                      value: AddressInputMode.gps,
+                      label: Text('GPS coordinates'),
+                      icon: Icon(Icons.gps_fixed),
+                    ),
                   ],
-                  selected: <bool>{_useManualAddressEntry},
+                  selected: <AddressInputMode>{_addressInputMode},
                   onSelectionChanged: (selection) {
                     if (selection.isEmpty) return;
                     final next = selection.single;
-                    if (_useManualAddressEntry == next) {
+                    if (_addressInputMode == next) {
                       return;
                     }
                     setState(() {
-                      _useManualAddressEntry = next;
+                      _addressInputMode = next;
+                      if (next == AddressInputMode.gps) {
+                        // Clear GPS error when switching to GPS mode
+                        _gpsCoordinateError = null;
+                      }
                     });
                     _refreshAddressDialog();
                   },
                 ),
               ),
               const SizedBox(width: 12),
-              if (!_useManualAddressEntry)
+              if (_addressInputMode == AddressInputMode.search)
                 IconButton(
                   tooltip: 'Clear selection',
                   onPressed: () {
@@ -511,25 +740,255 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
           ),
           const SizedBox(height: 16),
         ],
-        if (!_useManualAddressEntry && Env.googleMapsApiKey.isNotEmpty) ...[
-          TextField(
-            controller: _addressSearchController,
-            decoration: InputDecoration(
-              labelText: 'Search address (Google Maps)',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _addressSearchController.text.isNotEmpty
-                  ? IconButton(
-                      onPressed: () {
-                        _addressSearchController.clear();
-                        _addressPredictions = const [];
-                        _refreshAddressDialog();
-                      },
-                      icon: const Icon(Icons.clear),
-                    )
-                  : null,
+        if (_addressInputMode == AddressInputMode.gps && Env.googleMapsApiKey.isNotEmpty) ...[
+          GlassInput.text(
+            context: context,
+            controller: _gpsCoordinateController,
+            label: 'GPS Coordinates',
+            hint: 'e.g., -26.2041, 28.0473 or lat: -26.2041, lng: 28.0473',
+            prefixIcon: const Icon(Icons.gps_fixed),
+            suffixIcon: _gpsCoordinateController.text.isNotEmpty
+                ? IconButton(
+                    onPressed: () {
+                      _gpsCoordinateController.clear();
+                      setState(() {
+                        _selectedLat = null;
+                        _selectedLng = null;
+                        _staticMapUrl = null;
+                        _gpsCoordinateError = null;
+                      });
+                      _refreshAddressDialog();
+                    },
+                    icon: const Icon(Icons.clear),
+                  )
+                : null,
+            onChanged: _handleGpsCoordinateInput,
+            errorText: _gpsCoordinateError,
+          ),
+          if (_gpsCoordinateError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _gpsCoordinateError!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
             ),
+          ],
+          if (_selectedLat != null && _selectedLng != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              'Coordinates: ${_selectedLat!.toStringAsFixed(6)}, ${_selectedLng!.toStringAsFixed(6)}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            // Static map image
+            if (_selectedLat != null && _selectedLng != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  height: 300,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: _staticMapUrl != null && _staticMapUrl!.isNotEmpty
+                      ? Image.network(
+                          _staticMapUrl!,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            if (kDebugMode) {
+                              print('Static map image loading error: $error');
+                              print('Stack trace: $stackTrace');
+                              print('URL was: ${_staticMapUrl?.substring(0, _staticMapUrl!.length > 100 ? 100 : _staticMapUrl!.length)}...');
+                            }
+                            
+                            String errorMessage = 'Failed to load map';
+                            if (Env.googleMapsApiKey.isEmpty) {
+                              errorMessage = 'API key not configured';
+                            } else if (error.toString().contains('403') || error.toString().contains('denied')) {
+                              errorMessage = 'API key access denied. Check Static Maps API is enabled.';
+                            } else if (error.toString().contains('400') || error.toString().contains('invalid')) {
+                              errorMessage = 'Invalid request. Check coordinates.';
+                            }
+                            
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    color: Theme.of(context).colorScheme.error,
+                                    size: 48,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    child: Text(
+                                      errorMessage,
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            color: Theme.of(context).colorScheme.error,
+                                          ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                  if (kDebugMode && Env.googleMapsApiKey.isEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Configure GOOGLE_MAPS_API_KEY',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: Theme.of(context).colorScheme.error.withValues(alpha: 0.7),
+                                          ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
+                        )
+                      : Center(
+                          child: CircularProgressIndicator(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                ),
+              )
+            else
+              Container(
+                height: 300,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    'Enter GPS coordinates to view map',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            // Reverse geocode button
+            GlassButton.outlined(
+              onPressed: _isReverseGeocoding ? null : _reverseGeocodeCoordinates,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isReverseGeocoding) ...[
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 8),
+                  ] else ...[
+                    const Icon(Icons.search, size: 18),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(_isReverseGeocoding ? 'Reverse geocoding...' : 'Reverse geocode address'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ] else if (_gpsCoordinateController.text.trim().isEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Enter GPS coordinates or click on the map below to set location.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            // Placeholder for map when no coordinates entered
+            Container(
+              height: 300,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.map_outlined,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Enter GPS coordinates to view map',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+        ],
+        if (_addressInputMode == AddressInputMode.search && Env.googleMapsApiKey.isNotEmpty) ...[
+          GlassInput.text(
+            context: context,
+            controller: _addressSearchController,
+            label: 'Search address (Google Maps)',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _addressSearchController.text.isNotEmpty
+                ? IconButton(
+                    onPressed: () {
+                      _addressSearchController.clear();
+                      setState(() {
+                        _addressPredictions = const [];
+                        _isLoadingAutocomplete = false;
+                      });
+                      _refreshAddressDialog();
+                    },
+                    icon: const Icon(Icons.clear),
+                  )
+                : null,
             onChanged: _handleAddressSearch,
           ),
+          if (_isLoadingAutocomplete) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Searching addresses...',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (_addressPredictions.isNotEmpty) ...[
             const SizedBox(height: 8),
             _AddressPredictionsList(
@@ -546,17 +1005,19 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                 isSelected: true,
               ),
             ),
-          if (_addressPredictions.isEmpty)
+          if (!_isLoadingAutocomplete &&
+              _addressSearchController.text.trim().isEmpty &&
+              _addressPredictions.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8, bottom: 12),
               child: Text(
                 'Select an address from Google Maps to auto-fill these details. '
-                'Switch to "Enter manually" if you can’t find the address.',
+                'Switch to "Enter manually" if you can\'t find the address.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
         ],
-        if (_useManualAddressEntry || Env.googleMapsApiKey.isEmpty) ...[
+        if (_addressInputMode == AddressInputMode.manual || Env.googleMapsApiKey.isEmpty) ...[
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Container(
@@ -575,7 +1036,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
               child: Row(
                 children: [
                   Icon(
-                    _useManualAddressEntry
+                    _addressInputMode == AddressInputMode.manual
                         ? Icons.edit_location_alt_outlined
                         : Icons.info_outline,
                     size: 20,
@@ -666,6 +1127,16 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
             _addressPredictions = [];
           });
           _refreshAddressDialog();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Address details could not be loaded. Please fill in the address fields manually.',
+                ),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
           return;
         }
         final rawComponents =
@@ -720,22 +1191,22 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
 
       final streetNumber = componentFor('street_number') ?? '';
       final route = componentFor('route') ?? '';
-      final fallbackParts = (formattedAddress ?? prediction.description ?? '')
+      final fallbackParts = (formattedAddress ?? prediction.description)
           .split(',');
-      String _fallbackPart(int index) =>
+      String fallbackPart(int index) =>
           index < fallbackParts.length ? fallbackParts[index].trim() : '';
       final suburb =
           componentFor('sublocality') ??
           componentFor('sublocality_level_1') ??
           componentFor('neighborhood') ??
-          _fallbackPart(1);
+          fallbackPart(1);
       final city =
           componentFor('locality') ??
           componentFor('administrative_area_level_3') ??
           componentFor('administrative_area_level_2') ??
-          _fallbackPart(2);
+          fallbackPart(2);
       final province =
-          componentFor('administrative_area_level_1') ?? _fallbackPart(3);
+          componentFor('administrative_area_level_1') ?? fallbackPart(3);
       final postalCode = componentFor('postal_code') ?? '';
       final estateCandidate =
           componentFor('premise') ?? componentFor('subpremise');
@@ -744,7 +1215,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
         streetNumber,
         route,
       ].where((part) => part.trim().isNotEmpty).join(' ').trim();
-      final fallbackStreet = _fallbackPart(0);
+      final fallbackStreet = fallbackPart(0);
       final street = streetBase.isNotEmpty ? streetBase : fallbackStreet;
 
       // Update parent state
@@ -786,6 +1257,16 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
         _addressPredictions = [];
       });
       _refreshAddressDialog();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to load address details. Please fill in the address fields manually.',
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
       if (kDebugMode) {
         print('Error selecting prediction: $e');
       }
@@ -793,16 +1274,35 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
   }
 
   String _buildStaticMapUrl(double lat, double lng) {
+    // Validate API key
+    if (Env.googleMapsApiKey.isEmpty) {
+      if (kDebugMode) {
+        print('Warning: Google Maps API key is empty. Static map will not load.');
+      }
+      // Return empty string - the error builder will handle it
+      return '';
+    }
+
     final uri = Uri.https('maps.googleapis.com', '/maps/api/staticmap', {
       'center': '$lat,$lng',
-      'zoom': '16',
+      'zoom': '16', // Good zoom level to show address details
       'size': '600x300',
-      'scale': '2',
+      'scale': '2', // High DPI for better quality
       'maptype': 'roadmap',
-      'markers': 'color:red|$lat,$lng',
+      'markers': 'color:red|label:A|$lat,$lng', // Red marker with label
       'key': Env.googleMapsApiKey,
     });
-    return uri.toString();
+    
+    final url = uri.toString();
+    
+    if (kDebugMode) {
+      print('Built static map URL for coordinates: $lat, $lng');
+      print('URL length: ${url.length}');
+      print('API key present: ${Env.googleMapsApiKey.isNotEmpty}');
+      // Don't print full URL with API key for security, but log that it was built
+    }
+    
+    return url;
   }
 
   void _resetForm() {
@@ -817,8 +1317,11 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
     _selectedAddress = null;
     _selectedPriority = PriorityLevel.normal;
     _selectedDamageCause = DamageCause.other;
+    _selectedTechnicianId = null;
+    _selectedAppointmentDate = null;
+    _selectedAppointmentTime = null;
     _addressMode = AddressMode.newAddress;
-    _useManualAddressEntry = false;
+    _addressInputMode = AddressInputMode.search;
     _includeServiceProvider = false;
     _selectedInsurerLabel = null;
     _clearNewClientFields();
@@ -935,7 +1438,11 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
       final manualPostal = _addressPostalCodeController.text.trim();
 
       final requiresManualFields =
-          _useManualAddressEntry || Env.googleMapsApiKey.isEmpty;
+          _addressInputMode == AddressInputMode.manual || Env.googleMapsApiKey.isEmpty;
+
+      // Check if we have GPS coordinates
+      final hasGpsCoordinates = _selectedLat != null && _selectedLng != null;
+      final isGpsMode = _addressInputMode == AddressInputMode.gps;
 
       final street = requiresManualFields
           ? manualStreet
@@ -963,7 +1470,12 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
         postal,
       ].every((value) => value.isNotEmpty);
 
-      if (requiresManualFields) {
+      // If GPS mode is selected and GPS coordinates exist, allow saving with just coordinates
+      // Address fields are optional in this case
+      if (isGpsMode && hasGpsCoordinates) {
+        // Allow saving with GPS coordinates only, address fields are optional
+        // Use empty strings for missing fields
+      } else if (requiresManualFields) {
         if (!hasAllAddressFields) {
           messenger.showSnackBar(
             const SnackBar(
@@ -1122,6 +1634,9 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
         damageDescription: _damageDescriptionController.text.trim().isEmpty
             ? null
             : _damageDescriptionController.text.trim(),
+        technicianId: _selectedTechnicianId,
+        appointmentDate: _selectedAppointmentDate,
+        appointmentTime: _selectedAppointmentTime,
         surgeProtectionAtDb: _surgeAtDb,
         surgeProtectionAtPlug: _surgeAtPlug,
         agentId: profile.id,
@@ -1141,11 +1656,11 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
     if (state.hasError) {
       final errorMessage = _describeError(state.error);
       messenger.showSnackBar(
-        SnackBar(content: Text('Failed: $errorMessage')),
+        SnackBar(content: Text('${AppStrings.claimCreateFailed}: $errorMessage')),
       );
     } else if (state.hasValue && state.value != null) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Claim created successfully')),
+        const SnackBar(content: Text(AppStrings.claimCreated)),
       );
       ref.read(claimCaptureControllerProvider.notifier).reset();
       setState(_resetForm);
@@ -1156,12 +1671,21 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
 
   String _describeError(Object? error) {
     if (error is DomainError) {
-      if (error is UnknownError && error.cause != null) {
-        return '${error.message}: ${error.cause}';
+      // In production, don't expose internal error causes
+      if (error is UnknownError) {
+        // Only show cause in debug mode for development
+        if (kDebugMode && error.cause != null) {
+          return '${error.message}: ${error.cause}';
+        }
+        return error.message;
       }
       return error.message;
     }
-    return error?.toString() ?? 'Unexpected error occurred';
+    // For non-DomainError exceptions, show generic message in production
+    if (kDebugMode) {
+      return error?.toString() ?? 'Unexpected error occurred';
+    }
+    return 'An unexpected error occurred. Please try again.';
   }
 
   @override
@@ -1330,6 +1854,31 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                               maxLines: 2,
                             ),
                           ],
+                          const SizedBox(height: DesignTokens.spaceL),
+                          TechnicianSelector(
+                            selectedTechnicianId: _selectedTechnicianId,
+                            appointmentDate: _selectedAppointmentDate,
+                            onTechnicianSelected: (technicianId) {
+                              setState(() {
+                                _selectedTechnicianId = technicianId;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: DesignTokens.spaceM),
+                          AppointmentPicker(
+                            selectedDate: _selectedAppointmentDate,
+                            selectedTime: _selectedAppointmentTime,
+                            onDateSelected: (date) {
+                              setState(() {
+                                _selectedAppointmentDate = date;
+                              });
+                            },
+                            onTimeSelected: (time) {
+                              setState(() {
+                                _selectedAppointmentTime = time;
+                              });
+                            },
+                          ),
                         ],
                       ),
                     ),
@@ -1414,17 +1963,23 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                               runSpacing: 8,
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                FilledButton.icon(
+                                GlassButton.primary(
                                   onPressed: _showAddressDialog,
-                                  icon: Icon(
-                                    hasAddressSelection
-                                        ? Icons.edit_location_alt_outlined
-                                        : Icons.add_location_alt_outlined,
-                                  ),
-                                  label: Text(
-                                    hasAddressSelection
-                                        ? 'Edit address'
-                                        : 'Set address',
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        hasAddressSelection
+                                            ? Icons.edit_location_alt_outlined
+                                            : Icons.add_location_alt_outlined,
+                                      ),
+                                      const SizedBox(width: DesignTokens.spaceS),
+                                      Text(
+                                        hasAddressSelection
+                                            ? 'Edit address'
+                                            : 'Set address',
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 if (_addressMode == AddressMode.newAddress &&
@@ -1579,10 +2134,16 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                             },
                           ),
                           const SizedBox(height: 16),
-                          FilledButton.tonalIcon(
+                          GlassButton.secondary(
                             onPressed: _addItem,
-                            icon: const Icon(Icons.add_circle_outline),
-                            label: const Text('Add item'),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.add_circle_outline),
+                                SizedBox(width: DesignTokens.spaceS),
+                                Text('Add item'),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -1592,7 +2153,7 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
                       alignment: Alignment.centerRight,
                       child: SizedBox(
                         width: 220,
-                        child: FilledButton(
+                        child: GlassButton.primary(
                           onPressed: submission.isLoading
                               ? null
                               : _handleSubmit,
@@ -2066,24 +2627,8 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(26),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.18),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignTokens.spaceL),
       child: child,
     );
   }
@@ -2106,40 +2651,39 @@ class _AddressPredictionsList extends StatelessWidget {
         elevation: 2,
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.hardEdge,
-        child: ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: predictions.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final prediction = predictions[index];
-            return InkWell(
-              onTap: () {
-                onSelected(prediction);
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.place_outlined,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        prediction.description,
-                        style: Theme.of(context).textTheme.bodyMedium,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < predictions.length; i++) ...[
+              if (i > 0) const Divider(height: 1),
+              InkWell(
+                onTap: () {
+                  onSelected(predictions[i]);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.place_outlined,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          predictions[i].description,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            );
-          },
+            ],
+          ],
         ),
       ),
     );
@@ -2162,13 +2706,13 @@ class _SelectedAddressSummary extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: isSelected
-            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
-            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.7)
+            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isSelected
               ? theme.colorScheme.primary
-              : theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+              : theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
           width: isSelected ? 2 : 1,
         ),
       ),
@@ -2503,10 +3047,16 @@ class _CaptureHero extends StatelessWidget {
                 runSpacing: 12,
                 alignment: WrapAlignment.end,
                 children: [
-                  FilledButton.icon(
+                  GlassButton.primary(
                     onPressed: onBackToQueue,
-                    icon: const Icon(Icons.list_alt_outlined),
-                    label: const Text('Back to queue'),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.list_alt_outlined),
+                        SizedBox(width: DesignTokens.spaceS),
+                        Text('Back to queue'),
+                      ],
+                    ),
                   ),
                   OutlinedButton.icon(
                     onPressed: onManageInsurers,

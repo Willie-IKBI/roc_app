@@ -1111,7 +1111,7 @@ as String?,
 /// @nodoc
 mixin _$ClaimDraft {
 
- String get tenantId; String get claimNumber; String get insurerId; String? get clientId; ClientInput? get clientInput; String? get addressId; AddressInput? get addressInput; String? get serviceProviderId; ServiceProviderInput? get serviceProviderInput; String? get dasNumber; PriorityLevel get priority; DamageCause get damageCause; String? get damageDescription; bool get surgeProtectionAtDb; bool get surgeProtectionAtPlug; String? get agentId; String? get notesPublic; String? get notesInternal; String? get clientNotes; List<ClaimItemDraft> get items;
+ String get tenantId; String get claimNumber; String get insurerId; String? get clientId; ClientInput? get clientInput; String? get addressId; AddressInput? get addressInput; String? get serviceProviderId; ServiceProviderInput? get serviceProviderInput; String? get dasNumber; PriorityLevel get priority; DamageCause get damageCause; String? get damageDescription; bool get surgeProtectionAtDb; bool get surgeProtectionAtPlug; String? get agentId; String? get technicianId; DateTime? get appointmentDate; String? get appointmentTime; String? get notesPublic; String? get notesInternal; String? get clientNotes; List<ClaimItemDraft> get items;
 /// Create a copy of ClaimDraft
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1122,16 +1122,16 @@ $ClaimDraftCopyWith<ClaimDraft> get copyWith => _$ClaimDraftCopyWithImpl<ClaimDr
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ClaimDraft&&(identical(other.tenantId, tenantId) || other.tenantId == tenantId)&&(identical(other.claimNumber, claimNumber) || other.claimNumber == claimNumber)&&(identical(other.insurerId, insurerId) || other.insurerId == insurerId)&&(identical(other.clientId, clientId) || other.clientId == clientId)&&(identical(other.clientInput, clientInput) || other.clientInput == clientInput)&&(identical(other.addressId, addressId) || other.addressId == addressId)&&(identical(other.addressInput, addressInput) || other.addressInput == addressInput)&&(identical(other.serviceProviderId, serviceProviderId) || other.serviceProviderId == serviceProviderId)&&(identical(other.serviceProviderInput, serviceProviderInput) || other.serviceProviderInput == serviceProviderInput)&&(identical(other.dasNumber, dasNumber) || other.dasNumber == dasNumber)&&(identical(other.priority, priority) || other.priority == priority)&&(identical(other.damageCause, damageCause) || other.damageCause == damageCause)&&(identical(other.damageDescription, damageDescription) || other.damageDescription == damageDescription)&&(identical(other.surgeProtectionAtDb, surgeProtectionAtDb) || other.surgeProtectionAtDb == surgeProtectionAtDb)&&(identical(other.surgeProtectionAtPlug, surgeProtectionAtPlug) || other.surgeProtectionAtPlug == surgeProtectionAtPlug)&&(identical(other.agentId, agentId) || other.agentId == agentId)&&(identical(other.notesPublic, notesPublic) || other.notesPublic == notesPublic)&&(identical(other.notesInternal, notesInternal) || other.notesInternal == notesInternal)&&(identical(other.clientNotes, clientNotes) || other.clientNotes == clientNotes)&&const DeepCollectionEquality().equals(other.items, items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ClaimDraft&&(identical(other.tenantId, tenantId) || other.tenantId == tenantId)&&(identical(other.claimNumber, claimNumber) || other.claimNumber == claimNumber)&&(identical(other.insurerId, insurerId) || other.insurerId == insurerId)&&(identical(other.clientId, clientId) || other.clientId == clientId)&&(identical(other.clientInput, clientInput) || other.clientInput == clientInput)&&(identical(other.addressId, addressId) || other.addressId == addressId)&&(identical(other.addressInput, addressInput) || other.addressInput == addressInput)&&(identical(other.serviceProviderId, serviceProviderId) || other.serviceProviderId == serviceProviderId)&&(identical(other.serviceProviderInput, serviceProviderInput) || other.serviceProviderInput == serviceProviderInput)&&(identical(other.dasNumber, dasNumber) || other.dasNumber == dasNumber)&&(identical(other.priority, priority) || other.priority == priority)&&(identical(other.damageCause, damageCause) || other.damageCause == damageCause)&&(identical(other.damageDescription, damageDescription) || other.damageDescription == damageDescription)&&(identical(other.surgeProtectionAtDb, surgeProtectionAtDb) || other.surgeProtectionAtDb == surgeProtectionAtDb)&&(identical(other.surgeProtectionAtPlug, surgeProtectionAtPlug) || other.surgeProtectionAtPlug == surgeProtectionAtPlug)&&(identical(other.agentId, agentId) || other.agentId == agentId)&&(identical(other.technicianId, technicianId) || other.technicianId == technicianId)&&(identical(other.appointmentDate, appointmentDate) || other.appointmentDate == appointmentDate)&&(identical(other.appointmentTime, appointmentTime) || other.appointmentTime == appointmentTime)&&(identical(other.notesPublic, notesPublic) || other.notesPublic == notesPublic)&&(identical(other.notesInternal, notesInternal) || other.notesInternal == notesInternal)&&(identical(other.clientNotes, clientNotes) || other.clientNotes == clientNotes)&&const DeepCollectionEquality().equals(other.items, items));
 }
 
 
 @override
-int get hashCode => Object.hashAll([runtimeType,tenantId,claimNumber,insurerId,clientId,clientInput,addressId,addressInput,serviceProviderId,serviceProviderInput,dasNumber,priority,damageCause,damageDescription,surgeProtectionAtDb,surgeProtectionAtPlug,agentId,notesPublic,notesInternal,clientNotes,const DeepCollectionEquality().hash(items)]);
+int get hashCode => Object.hashAll([runtimeType,tenantId,claimNumber,insurerId,clientId,clientInput,addressId,addressInput,serviceProviderId,serviceProviderInput,dasNumber,priority,damageCause,damageDescription,surgeProtectionAtDb,surgeProtectionAtPlug,agentId,technicianId,appointmentDate,appointmentTime,notesPublic,notesInternal,clientNotes,const DeepCollectionEquality().hash(items)]);
 
 @override
 String toString() {
-  return 'ClaimDraft(tenantId: $tenantId, claimNumber: $claimNumber, insurerId: $insurerId, clientId: $clientId, clientInput: $clientInput, addressId: $addressId, addressInput: $addressInput, serviceProviderId: $serviceProviderId, serviceProviderInput: $serviceProviderInput, dasNumber: $dasNumber, priority: $priority, damageCause: $damageCause, damageDescription: $damageDescription, surgeProtectionAtDb: $surgeProtectionAtDb, surgeProtectionAtPlug: $surgeProtectionAtPlug, agentId: $agentId, notesPublic: $notesPublic, notesInternal: $notesInternal, clientNotes: $clientNotes, items: $items)';
+  return 'ClaimDraft(tenantId: $tenantId, claimNumber: $claimNumber, insurerId: $insurerId, clientId: $clientId, clientInput: $clientInput, addressId: $addressId, addressInput: $addressInput, serviceProviderId: $serviceProviderId, serviceProviderInput: $serviceProviderInput, dasNumber: $dasNumber, priority: $priority, damageCause: $damageCause, damageDescription: $damageDescription, surgeProtectionAtDb: $surgeProtectionAtDb, surgeProtectionAtPlug: $surgeProtectionAtPlug, agentId: $agentId, technicianId: $technicianId, appointmentDate: $appointmentDate, appointmentTime: $appointmentTime, notesPublic: $notesPublic, notesInternal: $notesInternal, clientNotes: $clientNotes, items: $items)';
 }
 
 
@@ -1142,7 +1142,7 @@ abstract mixin class $ClaimDraftCopyWith<$Res>  {
   factory $ClaimDraftCopyWith(ClaimDraft value, $Res Function(ClaimDraft) _then) = _$ClaimDraftCopyWithImpl;
 @useResult
 $Res call({
- String tenantId, String claimNumber, String insurerId, String? clientId, ClientInput? clientInput, String? addressId, AddressInput? addressInput, String? serviceProviderId, ServiceProviderInput? serviceProviderInput, String? dasNumber, PriorityLevel priority, DamageCause damageCause, String? damageDescription, bool surgeProtectionAtDb, bool surgeProtectionAtPlug, String? agentId, String? notesPublic, String? notesInternal, String? clientNotes, List<ClaimItemDraft> items
+ String tenantId, String claimNumber, String insurerId, String? clientId, ClientInput? clientInput, String? addressId, AddressInput? addressInput, String? serviceProviderId, ServiceProviderInput? serviceProviderInput, String? dasNumber, PriorityLevel priority, DamageCause damageCause, String? damageDescription, bool surgeProtectionAtDb, bool surgeProtectionAtPlug, String? agentId, String? technicianId, DateTime? appointmentDate, String? appointmentTime, String? notesPublic, String? notesInternal, String? clientNotes, List<ClaimItemDraft> items
 });
 
 
@@ -1159,7 +1159,7 @@ class _$ClaimDraftCopyWithImpl<$Res>
 
 /// Create a copy of ClaimDraft
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? tenantId = null,Object? claimNumber = null,Object? insurerId = null,Object? clientId = freezed,Object? clientInput = freezed,Object? addressId = freezed,Object? addressInput = freezed,Object? serviceProviderId = freezed,Object? serviceProviderInput = freezed,Object? dasNumber = freezed,Object? priority = null,Object? damageCause = null,Object? damageDescription = freezed,Object? surgeProtectionAtDb = null,Object? surgeProtectionAtPlug = null,Object? agentId = freezed,Object? notesPublic = freezed,Object? notesInternal = freezed,Object? clientNotes = freezed,Object? items = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? tenantId = null,Object? claimNumber = null,Object? insurerId = null,Object? clientId = freezed,Object? clientInput = freezed,Object? addressId = freezed,Object? addressInput = freezed,Object? serviceProviderId = freezed,Object? serviceProviderInput = freezed,Object? dasNumber = freezed,Object? priority = null,Object? damageCause = null,Object? damageDescription = freezed,Object? surgeProtectionAtDb = null,Object? surgeProtectionAtPlug = null,Object? agentId = freezed,Object? technicianId = freezed,Object? appointmentDate = freezed,Object? appointmentTime = freezed,Object? notesPublic = freezed,Object? notesInternal = freezed,Object? clientNotes = freezed,Object? items = null,}) {
   return _then(_self.copyWith(
 tenantId: null == tenantId ? _self.tenantId : tenantId // ignore: cast_nullable_to_non_nullable
 as String,claimNumber: null == claimNumber ? _self.claimNumber : claimNumber // ignore: cast_nullable_to_non_nullable
@@ -1177,6 +1177,9 @@ as DamageCause,damageDescription: freezed == damageDescription ? _self.damageDes
 as String?,surgeProtectionAtDb: null == surgeProtectionAtDb ? _self.surgeProtectionAtDb : surgeProtectionAtDb // ignore: cast_nullable_to_non_nullable
 as bool,surgeProtectionAtPlug: null == surgeProtectionAtPlug ? _self.surgeProtectionAtPlug : surgeProtectionAtPlug // ignore: cast_nullable_to_non_nullable
 as bool,agentId: freezed == agentId ? _self.agentId : agentId // ignore: cast_nullable_to_non_nullable
+as String?,technicianId: freezed == technicianId ? _self.technicianId : technicianId // ignore: cast_nullable_to_non_nullable
+as String?,appointmentDate: freezed == appointmentDate ? _self.appointmentDate : appointmentDate // ignore: cast_nullable_to_non_nullable
+as DateTime?,appointmentTime: freezed == appointmentTime ? _self.appointmentTime : appointmentTime // ignore: cast_nullable_to_non_nullable
 as String?,notesPublic: freezed == notesPublic ? _self.notesPublic : notesPublic // ignore: cast_nullable_to_non_nullable
 as String?,notesInternal: freezed == notesInternal ? _self.notesInternal : notesInternal // ignore: cast_nullable_to_non_nullable
 as String?,clientNotes: freezed == clientNotes ? _self.clientNotes : clientNotes // ignore: cast_nullable_to_non_nullable
@@ -1302,10 +1305,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String tenantId,  String claimNumber,  String insurerId,  String? clientId,  ClientInput? clientInput,  String? addressId,  AddressInput? addressInput,  String? serviceProviderId,  ServiceProviderInput? serviceProviderInput,  String? dasNumber,  PriorityLevel priority,  DamageCause damageCause,  String? damageDescription,  bool surgeProtectionAtDb,  bool surgeProtectionAtPlug,  String? agentId,  String? notesPublic,  String? notesInternal,  String? clientNotes,  List<ClaimItemDraft> items)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String tenantId,  String claimNumber,  String insurerId,  String? clientId,  ClientInput? clientInput,  String? addressId,  AddressInput? addressInput,  String? serviceProviderId,  ServiceProviderInput? serviceProviderInput,  String? dasNumber,  PriorityLevel priority,  DamageCause damageCause,  String? damageDescription,  bool surgeProtectionAtDb,  bool surgeProtectionAtPlug,  String? agentId,  String? technicianId,  DateTime? appointmentDate,  String? appointmentTime,  String? notesPublic,  String? notesInternal,  String? clientNotes,  List<ClaimItemDraft> items)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ClaimDraft() when $default != null:
-return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,_that.clientInput,_that.addressId,_that.addressInput,_that.serviceProviderId,_that.serviceProviderInput,_that.dasNumber,_that.priority,_that.damageCause,_that.damageDescription,_that.surgeProtectionAtDb,_that.surgeProtectionAtPlug,_that.agentId,_that.notesPublic,_that.notesInternal,_that.clientNotes,_that.items);case _:
+return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,_that.clientInput,_that.addressId,_that.addressInput,_that.serviceProviderId,_that.serviceProviderInput,_that.dasNumber,_that.priority,_that.damageCause,_that.damageDescription,_that.surgeProtectionAtDb,_that.surgeProtectionAtPlug,_that.agentId,_that.technicianId,_that.appointmentDate,_that.appointmentTime,_that.notesPublic,_that.notesInternal,_that.clientNotes,_that.items);case _:
   return orElse();
 
 }
@@ -1323,10 +1326,10 @@ return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String tenantId,  String claimNumber,  String insurerId,  String? clientId,  ClientInput? clientInput,  String? addressId,  AddressInput? addressInput,  String? serviceProviderId,  ServiceProviderInput? serviceProviderInput,  String? dasNumber,  PriorityLevel priority,  DamageCause damageCause,  String? damageDescription,  bool surgeProtectionAtDb,  bool surgeProtectionAtPlug,  String? agentId,  String? notesPublic,  String? notesInternal,  String? clientNotes,  List<ClaimItemDraft> items)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String tenantId,  String claimNumber,  String insurerId,  String? clientId,  ClientInput? clientInput,  String? addressId,  AddressInput? addressInput,  String? serviceProviderId,  ServiceProviderInput? serviceProviderInput,  String? dasNumber,  PriorityLevel priority,  DamageCause damageCause,  String? damageDescription,  bool surgeProtectionAtDb,  bool surgeProtectionAtPlug,  String? agentId,  String? technicianId,  DateTime? appointmentDate,  String? appointmentTime,  String? notesPublic,  String? notesInternal,  String? clientNotes,  List<ClaimItemDraft> items)  $default,) {final _that = this;
 switch (_that) {
 case _ClaimDraft():
-return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,_that.clientInput,_that.addressId,_that.addressInput,_that.serviceProviderId,_that.serviceProviderInput,_that.dasNumber,_that.priority,_that.damageCause,_that.damageDescription,_that.surgeProtectionAtDb,_that.surgeProtectionAtPlug,_that.agentId,_that.notesPublic,_that.notesInternal,_that.clientNotes,_that.items);case _:
+return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,_that.clientInput,_that.addressId,_that.addressInput,_that.serviceProviderId,_that.serviceProviderInput,_that.dasNumber,_that.priority,_that.damageCause,_that.damageDescription,_that.surgeProtectionAtDb,_that.surgeProtectionAtPlug,_that.agentId,_that.technicianId,_that.appointmentDate,_that.appointmentTime,_that.notesPublic,_that.notesInternal,_that.clientNotes,_that.items);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -1343,10 +1346,10 @@ return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String tenantId,  String claimNumber,  String insurerId,  String? clientId,  ClientInput? clientInput,  String? addressId,  AddressInput? addressInput,  String? serviceProviderId,  ServiceProviderInput? serviceProviderInput,  String? dasNumber,  PriorityLevel priority,  DamageCause damageCause,  String? damageDescription,  bool surgeProtectionAtDb,  bool surgeProtectionAtPlug,  String? agentId,  String? notesPublic,  String? notesInternal,  String? clientNotes,  List<ClaimItemDraft> items)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String tenantId,  String claimNumber,  String insurerId,  String? clientId,  ClientInput? clientInput,  String? addressId,  AddressInput? addressInput,  String? serviceProviderId,  ServiceProviderInput? serviceProviderInput,  String? dasNumber,  PriorityLevel priority,  DamageCause damageCause,  String? damageDescription,  bool surgeProtectionAtDb,  bool surgeProtectionAtPlug,  String? agentId,  String? technicianId,  DateTime? appointmentDate,  String? appointmentTime,  String? notesPublic,  String? notesInternal,  String? clientNotes,  List<ClaimItemDraft> items)?  $default,) {final _that = this;
 switch (_that) {
 case _ClaimDraft() when $default != null:
-return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,_that.clientInput,_that.addressId,_that.addressInput,_that.serviceProviderId,_that.serviceProviderInput,_that.dasNumber,_that.priority,_that.damageCause,_that.damageDescription,_that.surgeProtectionAtDb,_that.surgeProtectionAtPlug,_that.agentId,_that.notesPublic,_that.notesInternal,_that.clientNotes,_that.items);case _:
+return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,_that.clientInput,_that.addressId,_that.addressInput,_that.serviceProviderId,_that.serviceProviderInput,_that.dasNumber,_that.priority,_that.damageCause,_that.damageDescription,_that.surgeProtectionAtDb,_that.surgeProtectionAtPlug,_that.agentId,_that.technicianId,_that.appointmentDate,_that.appointmentTime,_that.notesPublic,_that.notesInternal,_that.clientNotes,_that.items);case _:
   return null;
 
 }
@@ -1358,7 +1361,7 @@ return $default(_that.tenantId,_that.claimNumber,_that.insurerId,_that.clientId,
 
 
 class _ClaimDraft extends ClaimDraft {
-  const _ClaimDraft({required this.tenantId, required this.claimNumber, required this.insurerId, this.clientId, this.clientInput, this.addressId, this.addressInput, this.serviceProviderId, this.serviceProviderInput, this.dasNumber, this.priority = PriorityLevel.normal, this.damageCause = DamageCause.other, this.damageDescription, this.surgeProtectionAtDb = false, this.surgeProtectionAtPlug = false, this.agentId, this.notesPublic, this.notesInternal, this.clientNotes, final  List<ClaimItemDraft> items = const <ClaimItemDraft>[]}): _items = items,super._();
+  const _ClaimDraft({required this.tenantId, required this.claimNumber, required this.insurerId, this.clientId, this.clientInput, this.addressId, this.addressInput, this.serviceProviderId, this.serviceProviderInput, this.dasNumber, this.priority = PriorityLevel.normal, this.damageCause = DamageCause.other, this.damageDescription, this.surgeProtectionAtDb = false, this.surgeProtectionAtPlug = false, this.agentId, this.technicianId, this.appointmentDate, this.appointmentTime, this.notesPublic, this.notesInternal, this.clientNotes, final  List<ClaimItemDraft> items = const <ClaimItemDraft>[]}): _items = items,super._();
   
 
 @override final  String tenantId;
@@ -1377,6 +1380,9 @@ class _ClaimDraft extends ClaimDraft {
 @override@JsonKey() final  bool surgeProtectionAtDb;
 @override@JsonKey() final  bool surgeProtectionAtPlug;
 @override final  String? agentId;
+@override final  String? technicianId;
+@override final  DateTime? appointmentDate;
+@override final  String? appointmentTime;
 @override final  String? notesPublic;
 @override final  String? notesInternal;
 @override final  String? clientNotes;
@@ -1398,16 +1404,16 @@ _$ClaimDraftCopyWith<_ClaimDraft> get copyWith => __$ClaimDraftCopyWithImpl<_Cla
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ClaimDraft&&(identical(other.tenantId, tenantId) || other.tenantId == tenantId)&&(identical(other.claimNumber, claimNumber) || other.claimNumber == claimNumber)&&(identical(other.insurerId, insurerId) || other.insurerId == insurerId)&&(identical(other.clientId, clientId) || other.clientId == clientId)&&(identical(other.clientInput, clientInput) || other.clientInput == clientInput)&&(identical(other.addressId, addressId) || other.addressId == addressId)&&(identical(other.addressInput, addressInput) || other.addressInput == addressInput)&&(identical(other.serviceProviderId, serviceProviderId) || other.serviceProviderId == serviceProviderId)&&(identical(other.serviceProviderInput, serviceProviderInput) || other.serviceProviderInput == serviceProviderInput)&&(identical(other.dasNumber, dasNumber) || other.dasNumber == dasNumber)&&(identical(other.priority, priority) || other.priority == priority)&&(identical(other.damageCause, damageCause) || other.damageCause == damageCause)&&(identical(other.damageDescription, damageDescription) || other.damageDescription == damageDescription)&&(identical(other.surgeProtectionAtDb, surgeProtectionAtDb) || other.surgeProtectionAtDb == surgeProtectionAtDb)&&(identical(other.surgeProtectionAtPlug, surgeProtectionAtPlug) || other.surgeProtectionAtPlug == surgeProtectionAtPlug)&&(identical(other.agentId, agentId) || other.agentId == agentId)&&(identical(other.notesPublic, notesPublic) || other.notesPublic == notesPublic)&&(identical(other.notesInternal, notesInternal) || other.notesInternal == notesInternal)&&(identical(other.clientNotes, clientNotes) || other.clientNotes == clientNotes)&&const DeepCollectionEquality().equals(other._items, _items));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _ClaimDraft&&(identical(other.tenantId, tenantId) || other.tenantId == tenantId)&&(identical(other.claimNumber, claimNumber) || other.claimNumber == claimNumber)&&(identical(other.insurerId, insurerId) || other.insurerId == insurerId)&&(identical(other.clientId, clientId) || other.clientId == clientId)&&(identical(other.clientInput, clientInput) || other.clientInput == clientInput)&&(identical(other.addressId, addressId) || other.addressId == addressId)&&(identical(other.addressInput, addressInput) || other.addressInput == addressInput)&&(identical(other.serviceProviderId, serviceProviderId) || other.serviceProviderId == serviceProviderId)&&(identical(other.serviceProviderInput, serviceProviderInput) || other.serviceProviderInput == serviceProviderInput)&&(identical(other.dasNumber, dasNumber) || other.dasNumber == dasNumber)&&(identical(other.priority, priority) || other.priority == priority)&&(identical(other.damageCause, damageCause) || other.damageCause == damageCause)&&(identical(other.damageDescription, damageDescription) || other.damageDescription == damageDescription)&&(identical(other.surgeProtectionAtDb, surgeProtectionAtDb) || other.surgeProtectionAtDb == surgeProtectionAtDb)&&(identical(other.surgeProtectionAtPlug, surgeProtectionAtPlug) || other.surgeProtectionAtPlug == surgeProtectionAtPlug)&&(identical(other.agentId, agentId) || other.agentId == agentId)&&(identical(other.technicianId, technicianId) || other.technicianId == technicianId)&&(identical(other.appointmentDate, appointmentDate) || other.appointmentDate == appointmentDate)&&(identical(other.appointmentTime, appointmentTime) || other.appointmentTime == appointmentTime)&&(identical(other.notesPublic, notesPublic) || other.notesPublic == notesPublic)&&(identical(other.notesInternal, notesInternal) || other.notesInternal == notesInternal)&&(identical(other.clientNotes, clientNotes) || other.clientNotes == clientNotes)&&const DeepCollectionEquality().equals(other._items, _items));
 }
 
 
 @override
-int get hashCode => Object.hashAll([runtimeType,tenantId,claimNumber,insurerId,clientId,clientInput,addressId,addressInput,serviceProviderId,serviceProviderInput,dasNumber,priority,damageCause,damageDescription,surgeProtectionAtDb,surgeProtectionAtPlug,agentId,notesPublic,notesInternal,clientNotes,const DeepCollectionEquality().hash(_items)]);
+int get hashCode => Object.hashAll([runtimeType,tenantId,claimNumber,insurerId,clientId,clientInput,addressId,addressInput,serviceProviderId,serviceProviderInput,dasNumber,priority,damageCause,damageDescription,surgeProtectionAtDb,surgeProtectionAtPlug,agentId,technicianId,appointmentDate,appointmentTime,notesPublic,notesInternal,clientNotes,const DeepCollectionEquality().hash(_items)]);
 
 @override
 String toString() {
-  return 'ClaimDraft(tenantId: $tenantId, claimNumber: $claimNumber, insurerId: $insurerId, clientId: $clientId, clientInput: $clientInput, addressId: $addressId, addressInput: $addressInput, serviceProviderId: $serviceProviderId, serviceProviderInput: $serviceProviderInput, dasNumber: $dasNumber, priority: $priority, damageCause: $damageCause, damageDescription: $damageDescription, surgeProtectionAtDb: $surgeProtectionAtDb, surgeProtectionAtPlug: $surgeProtectionAtPlug, agentId: $agentId, notesPublic: $notesPublic, notesInternal: $notesInternal, clientNotes: $clientNotes, items: $items)';
+  return 'ClaimDraft(tenantId: $tenantId, claimNumber: $claimNumber, insurerId: $insurerId, clientId: $clientId, clientInput: $clientInput, addressId: $addressId, addressInput: $addressInput, serviceProviderId: $serviceProviderId, serviceProviderInput: $serviceProviderInput, dasNumber: $dasNumber, priority: $priority, damageCause: $damageCause, damageDescription: $damageDescription, surgeProtectionAtDb: $surgeProtectionAtDb, surgeProtectionAtPlug: $surgeProtectionAtPlug, agentId: $agentId, technicianId: $technicianId, appointmentDate: $appointmentDate, appointmentTime: $appointmentTime, notesPublic: $notesPublic, notesInternal: $notesInternal, clientNotes: $clientNotes, items: $items)';
 }
 
 
@@ -1418,7 +1424,7 @@ abstract mixin class _$ClaimDraftCopyWith<$Res> implements $ClaimDraftCopyWith<$
   factory _$ClaimDraftCopyWith(_ClaimDraft value, $Res Function(_ClaimDraft) _then) = __$ClaimDraftCopyWithImpl;
 @override @useResult
 $Res call({
- String tenantId, String claimNumber, String insurerId, String? clientId, ClientInput? clientInput, String? addressId, AddressInput? addressInput, String? serviceProviderId, ServiceProviderInput? serviceProviderInput, String? dasNumber, PriorityLevel priority, DamageCause damageCause, String? damageDescription, bool surgeProtectionAtDb, bool surgeProtectionAtPlug, String? agentId, String? notesPublic, String? notesInternal, String? clientNotes, List<ClaimItemDraft> items
+ String tenantId, String claimNumber, String insurerId, String? clientId, ClientInput? clientInput, String? addressId, AddressInput? addressInput, String? serviceProviderId, ServiceProviderInput? serviceProviderInput, String? dasNumber, PriorityLevel priority, DamageCause damageCause, String? damageDescription, bool surgeProtectionAtDb, bool surgeProtectionAtPlug, String? agentId, String? technicianId, DateTime? appointmentDate, String? appointmentTime, String? notesPublic, String? notesInternal, String? clientNotes, List<ClaimItemDraft> items
 });
 
 
@@ -1435,7 +1441,7 @@ class __$ClaimDraftCopyWithImpl<$Res>
 
 /// Create a copy of ClaimDraft
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? tenantId = null,Object? claimNumber = null,Object? insurerId = null,Object? clientId = freezed,Object? clientInput = freezed,Object? addressId = freezed,Object? addressInput = freezed,Object? serviceProviderId = freezed,Object? serviceProviderInput = freezed,Object? dasNumber = freezed,Object? priority = null,Object? damageCause = null,Object? damageDescription = freezed,Object? surgeProtectionAtDb = null,Object? surgeProtectionAtPlug = null,Object? agentId = freezed,Object? notesPublic = freezed,Object? notesInternal = freezed,Object? clientNotes = freezed,Object? items = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? tenantId = null,Object? claimNumber = null,Object? insurerId = null,Object? clientId = freezed,Object? clientInput = freezed,Object? addressId = freezed,Object? addressInput = freezed,Object? serviceProviderId = freezed,Object? serviceProviderInput = freezed,Object? dasNumber = freezed,Object? priority = null,Object? damageCause = null,Object? damageDescription = freezed,Object? surgeProtectionAtDb = null,Object? surgeProtectionAtPlug = null,Object? agentId = freezed,Object? technicianId = freezed,Object? appointmentDate = freezed,Object? appointmentTime = freezed,Object? notesPublic = freezed,Object? notesInternal = freezed,Object? clientNotes = freezed,Object? items = null,}) {
   return _then(_ClaimDraft(
 tenantId: null == tenantId ? _self.tenantId : tenantId // ignore: cast_nullable_to_non_nullable
 as String,claimNumber: null == claimNumber ? _self.claimNumber : claimNumber // ignore: cast_nullable_to_non_nullable
@@ -1453,6 +1459,9 @@ as DamageCause,damageDescription: freezed == damageDescription ? _self.damageDes
 as String?,surgeProtectionAtDb: null == surgeProtectionAtDb ? _self.surgeProtectionAtDb : surgeProtectionAtDb // ignore: cast_nullable_to_non_nullable
 as bool,surgeProtectionAtPlug: null == surgeProtectionAtPlug ? _self.surgeProtectionAtPlug : surgeProtectionAtPlug // ignore: cast_nullable_to_non_nullable
 as bool,agentId: freezed == agentId ? _self.agentId : agentId // ignore: cast_nullable_to_non_nullable
+as String?,technicianId: freezed == technicianId ? _self.technicianId : technicianId // ignore: cast_nullable_to_non_nullable
+as String?,appointmentDate: freezed == appointmentDate ? _self.appointmentDate : appointmentDate // ignore: cast_nullable_to_non_nullable
+as DateTime?,appointmentTime: freezed == appointmentTime ? _self.appointmentTime : appointmentTime // ignore: cast_nullable_to_non_nullable
 as String?,notesPublic: freezed == notesPublic ? _self.notesPublic : notesPublic // ignore: cast_nullable_to_non_nullable
 as String?,notesInternal: freezed == notesInternal ? _self.notesInternal : notesInternal // ignore: cast_nullable_to_non_nullable
 as String?,clientNotes: freezed == clientNotes ? _self.clientNotes : clientNotes // ignore: cast_nullable_to_non_nullable

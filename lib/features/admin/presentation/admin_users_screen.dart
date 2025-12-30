@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/domain_error.dart';
+import '../../../core/theme/design_tokens.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../../../domain/models/user_account.dart';
 import '../../../domain/value_objects/role_type.dart';
 import '../controller/admin_users_controller.dart';
@@ -45,10 +49,16 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: GlassButton.primary(
         onPressed: () => _inviteUser(context),
-        icon: const Icon(Icons.person_add_alt_1_outlined),
-        label: const Text('Invite user'),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_add_alt_1_outlined),
+            SizedBox(width: DesignTokens.spaceS),
+            Text('Invite user'),
+          ],
+        ),
       ),
     );
   }
@@ -148,12 +158,11 @@ class _UsersContent extends ConsumerWidget {
                   const SizedBox(width: 24),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 320),
-                    child: TextField(
+                    child: GlassInput.text(
+                      context: context,
                       controller: searchController,
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        labelText: 'Search users',
-                      ),
+                      label: 'Search users',
+                      prefixIcon: const Icon(Icons.search),
                       onChanged: (_) => onSearchChanged(),
                     ),
                   ),
@@ -166,22 +175,8 @@ class _UsersContent extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 28),
-              Container(
-                decoration: BoxDecoration(
-                  color: surfaceColor,
-                  borderRadius: cardRadius,
-                  border: Border.all(
-                    color: theme.colorScheme.outline.withValues(alpha: 0.25),
-                  ),
-                  boxShadow: [
-                    if (isDesktop)
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 20,
-                        offset: const Offset(0, 12),
-                      ),
-                  ],
-                ),
+              GlassCard(
+                borderRadius: cardRadius,
                 child: Column(
                   children: [
                     _TableHeader(theme: theme),
@@ -451,10 +446,10 @@ class _UserRow extends ConsumerWidget {
             flex: 2,
             child: DropdownButtonFormField<RoleType>(
               initialValue: user.role,
-              decoration: const InputDecoration(
-                labelText: 'Role',
-                isDense: true,
-              ),
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Role',
+              ).copyWith(isDense: true),
               items: RoleType.values
                   .map(
                     (role) => DropdownMenuItem(
@@ -592,7 +587,7 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            FilledButton(
+            GlassButton.primary(
               onPressed: onRetry,
               child: const Text('Retry'),
             ),
@@ -611,10 +606,9 @@ class _AutoProvisionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      color: theme.colorScheme.surfaceContainerHighest,
+    return GlassCard(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(DesignTokens.spaceM),
         child: Row(
           children: [
             Icon(
@@ -685,11 +679,10 @@ class _UserDetailsDialogState extends State<_UserDetailsDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextFormField(
+              GlassInput.textForm(
+                context: context,
                 controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Full name *',
-                ),
+                label: 'Full name *',
                 validator: (value) {
                   final trimmed = value?.trim() ?? '';
                   if (trimmed.isEmpty) {
@@ -699,12 +692,11 @@ class _UserDetailsDialogState extends State<_UserDetailsDialog> {
                 },
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              GlassInput.textForm(
+                context: context,
                 controller: _phoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Mobile number',
-                  hintText: 'e.g. 0821234567',
-                ),
+                label: 'Mobile number',
+                hint: 'e.g. 0821234567',
                 keyboardType: TextInputType.phone,
               ),
             ],
@@ -716,7 +708,7 @@ class _UserDetailsDialogState extends State<_UserDetailsDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GlassButton.primary(
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
             Navigator.of(context).pop(
@@ -777,11 +769,10 @@ class _InviteDialogState extends State<_InviteDialog> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 16),
-            TextFormField(
+            GlassInput.textForm(
+              context: context,
               controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Work email',
-              ),
+              label: 'Work email',
               keyboardType: TextInputType.emailAddress,
               validator: (value) {
                 final trimmed = value?.trim() ?? '';
@@ -796,7 +787,10 @@ class _InviteDialogState extends State<_InviteDialog> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<RoleType>(
-              decoration: const InputDecoration(labelText: 'Role'),
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Role',
+              ),
               initialValue: _role,
               items: RoleType.values
                   .map(
@@ -819,7 +813,7 @@ class _InviteDialogState extends State<_InviteDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GlassButton.primary(
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
             Navigator.of(context).pop(

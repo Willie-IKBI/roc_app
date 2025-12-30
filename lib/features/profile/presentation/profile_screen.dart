@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/strings/app_strings.dart';
+import '../../../core/theme/design_tokens.dart';
+import '../../../core/theme/theme_preference_provider.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../../../domain/models/profile.dart';
 import '../../../core/utils/validators.dart';
 import '../../profile/controller/profile_controller.dart';
@@ -63,37 +69,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             final theme = Theme.of(context);
             final outline =
                 theme.colorScheme.outlineVariant.withValues(alpha: 0.28);
-            InputDecoration fieldDecoration(String label, {String? hint}) {
-              final borderRadius = BorderRadius.circular(16);
-              return InputDecoration(
-                labelText: label,
-                hintText: hint,
-                filled: true,
-                fillColor:
-                    theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                border: OutlineInputBorder(
-                  borderRadius: borderRadius,
-                  borderSide: BorderSide(color: outline),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: borderRadius,
-                  borderSide: BorderSide(color: outline),
-                ),
-                disabledBorder: OutlineInputBorder(
-                  borderRadius: borderRadius,
-                  borderSide: BorderSide(color: outline.withValues(alpha: 0.2)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: borderRadius,
-                  borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.8),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                labelStyle: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              );
-            }
+            // Use GlassInput for consistent styling
 
             return LayoutBuilder(
               builder: (context, constraints) {
@@ -104,39 +80,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 return ListView(
                   padding: EdgeInsets.symmetric(
                     horizontal: horizontalPadding,
-                    vertical: 28,
+                    vertical: DesignTokens.spaceL,
                   ),
                   children: [
                     _ProfileSummaryCard(profile: profile),
                     if (!profile.isActive) ...[
-                      const SizedBox(height: 20),
+                      const SizedBox(height: DesignTokens.spaceM),
                       const _InactiveProfileBanner(),
                     ],
-                    const SizedBox(height: 28),
+                    const SizedBox(height: DesignTokens.spaceL),
                     Form(
                       key: _formKey,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surface,
-                          borderRadius: cardRadius,
-                          border: Border.all(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.2),
-                          ),
-                          boxShadow: [
-                            if (isDesktop)
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.04),
-                                blurRadius: 22,
-                                offset: const Offset(0, 18),
-                              ),
-                          ],
+                      child: GlassCard(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isDesktop ? DesignTokens.spaceXL : DesignTokens.spaceL,
+                          vertical: isDesktop ? DesignTokens.spaceXL : DesignTokens.spaceL,
                         ),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isDesktop ? 36 : 24,
-                            vertical: isDesktop ? 36 : 26,
-                          ),
-                          child: Column(
+                        child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
@@ -169,8 +129,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                           key: const ValueKey('profile-email'),
                                           initialValue: profile.email,
                                           readOnly: true,
-                                          decoration:
-                                              fieldDecoration('Email'),
+                                          decoration: GlassInput.decoration(
+                                            context: context,
+                                            label: 'Email',
+                                          ),
                                         ),
                                       ),
                                       SizedBox(
@@ -178,8 +140,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                         child: TextFormField(
                                           controller: _nameController,
                                           enabled: profile.isActive,
-                                          decoration:
-                                              fieldDecoration('Full name'),
+                                          decoration: GlassInput.decoration(
+                                            context: context,
+                                            label: 'Full name',
+                                          ),
                                           validator: (value) {
                                             if (value == null ||
                                                 value.trim().isEmpty) {
@@ -194,8 +158,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                         child: TextFormField(
                                           controller: _phoneController,
                                           enabled: profile.isActive,
-                                          decoration: fieldDecoration(
-                                            'Mobile number',
+                                          decoration: GlassInput.decoration(
+                                            context: context,
+                                            label: 'Mobile number',
                                             hint: 'e.g. 0821234567',
                                           ),
                                           keyboardType: TextInputType.phone,
@@ -209,18 +174,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                           key: const ValueKey('profile-role'),
                                           initialValue: profile.role,
                                           readOnly: true,
-                                          decoration:
-                                              fieldDecoration('Role'),
+                                          decoration: GlassInput.decoration(
+                                            context: context,
+                                            label: 'Role',
+                                          ),
                                         ),
                                       ),
                                     ],
                                   );
                                 },
                               ),
-                              const SizedBox(height: 32),
+                              const SizedBox(height: DesignTokens.spaceXL),
                               Align(
                                 alignment: Alignment.centerRight,
-                                child: FilledButton.icon(
+                                child: GlassButton.primary(
                                   onPressed: (!profile.isActive)
                                       ? null
                                       : () async {
@@ -253,13 +220,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                             );
                                           }
                                         },
-                                  icon: const Icon(Icons.save),
-                                  label: const Text('Save changes'),
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 26,
-                                      vertical: 16,
-                                    ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.save_outlined),
+                                      SizedBox(width: DesignTokens.spaceS),
+                                      Text('Save changes'),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -267,8 +234,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: DesignTokens.spaceL),
+                    const _AppearanceCard(),
+                    const SizedBox(height: DesignTokens.spaceL),
                     _SupportCard(email: profile.email),
                   ],
                 );
@@ -392,29 +360,11 @@ class _ProfileSummaryCard extends StatelessWidget {
     final statusColor =
         profile.isActive ? theme.colorScheme.primary : theme.colorScheme.error;
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            accent.withValues(alpha: 0.16),
-            theme.colorScheme.secondary.withValues(alpha: 0.12),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.15),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 28,
-            offset: const Offset(0, 16),
-          ),
-        ],
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: DesignTokens.spaceXL,
+        vertical: DesignTokens.spaceL,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 30),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -524,6 +474,81 @@ class _Chip extends StatelessWidget {
   }
 }
 
+class _AppearanceCard extends ConsumerWidget {
+  const _AppearanceCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final themePreference = ref.watch(themePreferenceProvider);
+    
+    return GlassCard(
+      padding: EdgeInsets.symmetric(
+        horizontal: DesignTokens.spaceL,
+        vertical: DesignTokens.spaceL,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            AppStrings.appearanceSettings,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            AppStrings.appearanceDescription,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: DesignTokens.spaceL),
+          themePreference.when(
+            data: (currentMode) {
+              final isDark = currentMode == ThemeMode.dark;
+              return SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Row(
+                  children: [
+                    Icon(
+                      isDark ? Icons.dark_mode : Icons.light_mode,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: DesignTokens.spaceM),
+                    Text(
+                      isDark ? AppStrings.themeDark : AppStrings.themeLight,
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                  ],
+                ),
+                value: isDark,
+                onChanged: (value) {
+                  final newMode = value ? ThemeMode.dark : ThemeMode.light;
+                  ref.read(themePreferenceProvider.notifier).setThemeMode(newMode);
+                },
+              );
+            },
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(DesignTokens.spaceL),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+            error: (error, stackTrace) => Text(
+              'Error loading theme preference: $error',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SupportCard extends StatelessWidget {
   const _SupportCard({required this.email});
 
@@ -532,15 +557,11 @@ class _SupportCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.18),
-        ),
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: DesignTokens.spaceL,
+        vertical: DesignTokens.spaceL,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -564,10 +585,16 @@ class _SupportCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          FilledButton.icon(
+          GlassButton.primary(
             onPressed: () => GoRouter.of(context).push('/claims'),
-            icon: const Icon(Icons.list_alt_outlined),
-            label: const Text('Back to queue'),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.list_alt_outlined),
+                SizedBox(width: DesignTokens.spaceS),
+                Text('Back to queue'),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Container(

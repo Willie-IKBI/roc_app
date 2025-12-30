@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/design_tokens.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../../../core/errors/domain_error.dart';
 import '../../../domain/models/brand.dart';
 import '../controller/brands_controller.dart';
@@ -41,10 +45,16 @@ class _AdminBrandsScreenState extends ConsumerState<AdminBrandsScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: GlassButton.primary(
         onPressed: () => _showEditor(context),
-        icon: const Icon(Icons.label_outline),
-        label: const Text('Add brand'),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.label_outline),
+            SizedBox(width: DesignTokens.spaceS),
+            Text('Add brand'),
+          ],
+        ),
       ),
     );
   }
@@ -119,19 +129,18 @@ class _BrandsContent extends ConsumerWidget {
               ),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 320),
-                child: TextField(
+                child: GlassInput.text(
+                  context: context,
                   controller: searchController,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    labelText: 'Search brands',
-                  ),
+                  label: 'Search brands',
+                  prefixIcon: const Icon(Icons.search),
                   onChanged: (_) => onSearchChanged(),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 24),
-          Card(
+          GlassCard(
             child: Column(
               children: [
                 const _BrandsTableHeader(),
@@ -227,7 +236,7 @@ class _BrandRow extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
-            FilledButton(
+            GlassButton.primary(
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('Remove'),
             ),
@@ -319,9 +328,10 @@ class _BrandDialogState extends State<_BrandDialog> {
         width: 420,
         child: Form(
           key: _formKey,
-          child: TextFormField(
+          child: GlassInput.textForm(
+            context: context,
             controller: _nameController,
-            decoration: const InputDecoration(labelText: 'Brand name *'),
+            label: 'Brand name *',
             validator: (value) {
               final trimmed = value?.trim() ?? '';
               if (trimmed.isEmpty) {
@@ -337,7 +347,7 @@ class _BrandDialogState extends State<_BrandDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GlassButton.primary(
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
             Navigator.of(context).pop(_nameController.text.trim());
@@ -370,10 +380,16 @@ class _BrandsError extends StatelessWidget {
             const SizedBox(height: 4),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            FilledButton.icon(
+            GlassButton.primary(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.refresh),
+                  SizedBox(width: DesignTokens.spaceS),
+                  Text('Retry'),
+                ],
+              ),
             ),
           ],
         ),

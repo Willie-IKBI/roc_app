@@ -41,6 +41,29 @@ class SupabaseUserAdminRemoteDataSource implements UserAdminRemoteDataSource {
   }
 
   @override
+  Future<Result<List<ProfileRow>>> fetchTechnicians() async {
+    try {
+      final response = await _client
+          .from('profiles')
+          .select(
+            'id, tenant_id, full_name, phone, email, role, is_active, created_at, updated_at',
+          )
+          .eq('role', 'technician')
+          .eq('is_active', true)
+          .order('full_name');
+
+      final rows = (response as List<dynamic>)
+          .map((row) => ProfileRow.fromJson(Map<String, dynamic>.from(row as Map)))
+          .toList();
+      return Result.ok(rows);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
   Future<Result<void>> updateRole({
     required String userId,
     required RoleType role,

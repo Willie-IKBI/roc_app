@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../controller/auth_controller.dart';
 import 'widgets/auth_scaffold.dart';
 
@@ -80,9 +82,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             const SizedBox(height: 24),
             TextFormField(
               controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email address',
-                prefixIcon: Icon(Icons.mail_outline),
+              decoration: GlassInput.decoration(
+                context: context,
+                label: 'Email address',
+                prefixIcon: const Icon(Icons.mail_outline),
               ),
               keyboardType: TextInputType.emailAddress,
               validator: (value) {
@@ -96,7 +99,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               },
             ),
             const SizedBox(height: 24),
-            FilledButton(
+            GlassButton.primary(
               onPressed: resetState.isLoading ? null : _handleSubmit,
               child: resetState.isLoading
                   ? const SizedBox.square(

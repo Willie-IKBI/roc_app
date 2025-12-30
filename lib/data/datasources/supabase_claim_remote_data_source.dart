@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show PostgrestException, SupabaseClient;
 
 import '../../core/errors/domain_error.dart';
+import '../../core/logging/logger.dart';
 import '../../core/utils/result.dart';
 import '../../domain/models/claim_draft.dart';
 import '../../domain/value_objects/claim_enums.dart';
@@ -36,8 +37,19 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
           .toList(growable: false);
       return Result.ok(rows);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch claims queue (status: $status)',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching claims queue (status: $status)',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -48,7 +60,7 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
       final data = await _client
           .from('claims')
           .select(
-            'id, tenant_id, claim_number, insurer_id, client_id, address_id, service_provider_id, das_number, status, priority, damage_cause, damage_description, surge_protection_at_db, surge_protection_at_plug, agent_id, sla_started_at, closed_at, notes_public, notes_internal, created_at, updated_at',
+            'id, tenant_id, claim_number, insurer_id, client_id, address_id, service_provider_id, das_number, status, priority, damage_cause, damage_description, surge_protection_at_db, surge_protection_at_plug, agent_id, technician_id, appointment_date, appointment_time, sla_started_at, closed_at, notes_public, notes_internal, created_at, updated_at',
           )
           .eq('id', claimId)
           .single();
@@ -66,7 +78,7 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
     try {
       final data = await _client
           .from('claim_items')
-          .select('*')
+          .select('id, tenant_id, claim_id, brand, color, warranty, serial_or_model, notes, created_at, updated_at')
           .eq('claim_id', claimId)
           .order('created_at');
 
@@ -87,7 +99,7 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
     try {
       final data = await _client
           .from('contact_attempts')
-          .select('*')
+          .select('id, tenant_id, claim_id, attempted_by, attempted_at, method, outcome, notes')
           .eq('claim_id', claimId)
           .order('attempted_at', ascending: false)
           .limit(1)
@@ -114,7 +126,7 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
     try {
       final data = await _client
           .from('contact_attempts')
-          .select('*')
+          .select('id, tenant_id, claim_id, attempted_by, attempted_at, method, outcome, notes')
           .eq('claim_id', claimId)
           .order('attempted_at', ascending: false);
 
@@ -137,7 +149,7 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
     try {
       final data = await _client
           .from('claim_status_history')
-          .select('*')
+          .select('id, tenant_id, claim_id, from_status, to_status, changed_by, changed_at, reason')
           .eq('claim_id', claimId)
           .order('changed_at', ascending: false);
 
@@ -158,7 +170,7 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
     try {
       final data = await _client
           .from('clients')
-          .select('*')
+          .select('id, tenant_id, first_name, last_name, primary_phone, alt_phone, email, created_at, updated_at')
           .eq('id', clientId)
           .single();
       return Result.ok(
@@ -176,7 +188,7 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
     try {
       final data = await _client
           .from('addresses')
-          .select('*, estate:estate_id(*)')
+          .select('id, tenant_id, client_id, estate_id, google_place_id, unit_number, complex_or_estate, street, suburb, city, province, postal_code, country, latitude, longitude, notes, is_primary, created_at, updated_at, estate:estate_id(id, tenant_id, name, suburb, city, province, postal_code, created_at, updated_at)')
           .eq('id', addressId)
           .single();
       return Result.ok(
@@ -214,7 +226,11 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       });
 
-      // TODO(phase2): sendSmsTemplate integration (edge function / SMS provider).
+      // TODO(phase2): SMS template integration via edge function or SMS provider.
+      // This feature is planned for a future phase. When implemented, it should:
+      // 1. Call a Supabase Edge Function or external SMS provider API
+      // 2. Use the provided smsTemplateId to fetch and send the template
+      // 3. Handle errors gracefully and log SMS sending failures
 
       return const Result.ok(null);
     } on PostgrestException catch (err) {
@@ -323,6 +339,9 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
         'surge_protection_at_db': draft.surgeProtectionAtDb,
         'surge_protection_at_plug': draft.surgeProtectionAtPlug,
         'agent_id': draft.agentId,
+        'technician_id': draft.technicianId,
+        'appointment_date': draft.appointmentDate?.toIso8601String().split('T')[0],
+        'appointment_time': draft.appointmentTime,
         'notes_public': draft.clientNotes ?? draft.notesPublic,
         'notes_internal': draft.notesInternal,
       }..removeWhere((_, value) => value == null);
@@ -509,6 +528,52 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
           return Result.err(mapPostgrestException(err));
         }
       }
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<void>> updateTechnician({
+    required String claimId,
+    required String tenantId,
+    String? technicianId,
+  }) async {
+    try {
+      final updatePayload = <String, dynamic>{
+        'technician_id': technicianId,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+
+      await _client.from('claims').update(updatePayload).eq('id', claimId);
+
+      return const Result.ok(null);
+    } on PostgrestException catch (err) {
+      return Result.err(mapPostgrestException(err));
+    } catch (err) {
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  Future<Result<void>> updateAppointment({
+    required String claimId,
+    required String tenantId,
+    DateTime? appointmentDate,
+    String? appointmentTime,
+  }) async {
+    try {
+      final updatePayload = <String, dynamic>{
+        'appointment_date': appointmentDate?.toIso8601String().split('T')[0],
+        'appointment_time': appointmentTime,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+
+      await _client.from('claims').update(updatePayload).eq('id', claimId);
+
+      return const Result.ok(null);
+    } on PostgrestException catch (err) {
       return Result.err(mapPostgrestException(err));
     } catch (err) {
       return Result.err(UnknownError(err));

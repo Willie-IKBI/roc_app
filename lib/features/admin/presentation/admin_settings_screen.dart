@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/design_tokens.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../../admin/controller/queue_settings_controller.dart';
 import '../../admin/controller/sla_rules_controller.dart';
 import '../../admin/controller/sms_templates_controller.dart';
@@ -23,29 +27,29 @@ class AdminSettingsScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(DesignTokens.spaceM),
           children: [
             Text(
               'Service level agreement',
               style: theme.textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: DesignTokens.spaceM),
             _SlaRuleCard(state: slaAsync),
-            const SizedBox(height: 32),
+            const SizedBox(height: DesignTokens.spaceXL),
             Text(
               'Queue retry configuration',
               style: theme.textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: DesignTokens.spaceM),
             _QueueSettingsCard(state: queueAsync),
-            const SizedBox(height: 32),
+            const SizedBox(height: DesignTokens.spaceXL),
             Text(
               'SMS sender',
               style: theme.textTheme.titleLarge,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: DesignTokens.spaceM),
             _SmsSenderCard(state: senderAsync),
-            const SizedBox(height: 32),
+            const SizedBox(height: DesignTokens.spaceXL),
             Text(
               'SMS templates',
               style: theme.textTheme.titleLarge,
@@ -97,10 +101,9 @@ class _SlaRuleCardState extends ConsumerState<_SlaRuleCard> {
       });
     });
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: widget.state.when(
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
+      child: widget.state.when(
           data: (rule) {
             if (_minutesController.text.isEmpty) {
               _minutesController.text =
@@ -117,12 +120,11 @@ class _SlaRuleCardState extends ConsumerState<_SlaRuleCard> {
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 8),
-                  TextFormField(
+                  GlassInput.textForm(
+                    context: context,
                     controller: _minutesController,
+                    hint: 'e.g. 240',
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      hintText: 'e.g. 240',
-                    ),
                     validator: (value) {
                       final trimmed = value?.trim() ?? '';
                       if (trimmed.isEmpty) {
@@ -150,7 +152,7 @@ class _SlaRuleCardState extends ConsumerState<_SlaRuleCard> {
                   const SizedBox(height: 16),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: FilledButton(
+                    child: GlassButton.primary(
                       onPressed: widget.state.isLoading
                           ? null
                           : () async {
@@ -204,7 +206,6 @@ class _SlaRuleCardState extends ConsumerState<_SlaRuleCard> {
                 .refresh(),
           ),
         ),
-      ),
     );
   }
 }
@@ -251,10 +252,9 @@ class _QueueSettingsCardState extends ConsumerState<_QueueSettingsCard> {
       });
     });
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: widget.state.when(
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
+      child: widget.state.when(
           data: (settings) {
             if (_retryLimitController.text.isEmpty) {
               _retryLimitController.text = settings.retryLimit.toString();
@@ -266,13 +266,12 @@ class _QueueSettingsCardState extends ConsumerState<_QueueSettingsCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextFormField(
+                  GlassInput.textForm(
+                    context: context,
                     controller: _retryLimitController,
+                    label: 'Retry limit',
+                    hint: 'Number of contact attempts before escalation',
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Retry limit',
-                      helperText: 'Number of contact attempts before escalation',
-                    ),
                     validator: (value) {
                       final trimmed = value?.trim() ?? '';
                       if (trimmed.isEmpty) {
@@ -286,14 +285,12 @@ class _QueueSettingsCardState extends ConsumerState<_QueueSettingsCard> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
+                  GlassInput.textForm(
+                    context: context,
                     controller: _retryIntervalController,
+                    label: 'Retry interval (minutes)',
+                    hint: 'Minimum time between contact attempts for callbacks',
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Retry interval (minutes)',
-                      helperText:
-                          'Minimum time between contact attempts for callbacks',
-                    ),
                     validator: (value) {
                       final trimmed = value?.trim() ?? '';
                       if (trimmed.isEmpty) {
@@ -309,7 +306,7 @@ class _QueueSettingsCardState extends ConsumerState<_QueueSettingsCard> {
                   const SizedBox(height: 16),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: FilledButton(
+                    child: GlassButton.primary(
                       onPressed: widget.state.isLoading
                           ? null
                           : () async {
@@ -368,7 +365,6 @@ class _QueueSettingsCardState extends ConsumerState<_QueueSettingsCard> {
                 .refresh(),
           ),
         ),
-      ),
     );
   }
 }
@@ -395,10 +391,16 @@ class _SettingsError extends StatelessWidget {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 12),
-        FilledButton.icon(
+        GlassButton.primary(
           onPressed: onRetry,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Retry'),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.refresh),
+              SizedBox(width: DesignTokens.spaceS),
+              Text('Retry'),
+            ],
+          ),
         ),
       ],
     );
@@ -443,10 +445,9 @@ class _SmsSenderCardState extends ConsumerState<_SmsSenderCard> {
       });
     });
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: widget.state.when(
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
+      child: widget.state.when(
           data: (settings) {
             if (_nameController.text.isEmpty &&
                 _numberController.text.isEmpty) {
@@ -463,11 +464,10 @@ class _SmsSenderCardState extends ConsumerState<_SmsSenderCard> {
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 8),
-                  TextFormField(
+                  GlassInput.textForm(
+                    context: context,
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      hintText: 'Repair on Call',
-                    ),
+                    hint: 'Repair on Call',
                     maxLength: 11,
                   ),
                   const SizedBox(height: 12),
@@ -476,12 +476,11 @@ class _SmsSenderCardState extends ConsumerState<_SmsSenderCard> {
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 8),
-                  TextFormField(
+                  GlassInput.textForm(
+                    context: context,
                     controller: _numberController,
+                    hint: '+27821234567',
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      hintText: '+27821234567',
-                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -492,7 +491,7 @@ class _SmsSenderCardState extends ConsumerState<_SmsSenderCard> {
                   const SizedBox(height: 16),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: FilledButton(
+                    child: GlassButton.primary(
                       onPressed: widget.state.isLoading
                           ? null
                           : () async {
@@ -546,7 +545,6 @@ class _SmsSenderCardState extends ConsumerState<_SmsSenderCard> {
                 ref.read(smsSenderControllerProvider.notifier).refresh(),
           ),
         ),
-      ),
     );
   }
 }
@@ -558,10 +556,9 @@ class _SmsTemplatesSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: state.when(
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
+      child: state.when(
           data: (templates) => _SmsTemplatesContent(templates: templates),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => _SettingsError(
@@ -570,7 +567,6 @@ class _SmsTemplatesSection extends ConsumerWidget {
                 ref.read(smsTemplatesControllerProvider.notifier).refresh(),
           ),
         ),
-      ),
     );
   }
 }
@@ -589,10 +585,16 @@ class _SmsTemplatesContent extends ConsumerWidget {
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: FilledButton.icon(
+          child: GlassButton.primary(
             onPressed: () => _editTemplate(context, ref),
-            icon: const Icon(Icons.sms_outlined),
-            label: const Text('Create template'),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.sms_outlined),
+                SizedBox(width: DesignTokens.spaceS),
+                Text('Create template'),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -762,7 +764,7 @@ class _SmsTemplateTile extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
-            FilledButton(
+            GlassButton.primary(
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('Delete'),
             ),
@@ -838,13 +840,8 @@ class _SmsTemplateTile extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
+        GlassCard(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(8),
-          ),
           child: Text(
             template.body,
             style: theme.textTheme.bodyMedium,
@@ -905,11 +902,10 @@ class _SmsTemplateDialogState extends State<_SmsTemplateDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextFormField(
+                GlassInput.textForm(
+                  context: context,
                   controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Template name *',
-                  ),
+                  label: 'Template name *',
                   validator: (value) {
                     final trimmed = value?.trim() ?? '';
                     if (trimmed.isEmpty) {
@@ -919,22 +915,19 @@ class _SmsTemplateDialogState extends State<_SmsTemplateDialog> {
                   },
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
+                GlassInput.textForm(
+                  context: context,
                   controller: _descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Description',
-                    helperText: 'Optional - internal reference only',
-                  ),
+                  label: 'Description',
+                  hint: 'Optional - internal reference only',
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
+                GlassInput.textForm(
+                  context: context,
                   controller: _bodyController,
+                  label: 'Message body *',
+                  hint: 'Use placeholders like {claim_number}, {client_name}',
                   maxLines: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Message body *',
-                    helperText:
-                        'Use placeholders like {claim_number}, {client_name}',
-                  ),
                   validator: (value) {
                     final trimmed = value?.trim() ?? '';
                     if (trimmed.isEmpty) {
@@ -968,7 +961,7 @@ class _SmsTemplateDialogState extends State<_SmsTemplateDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        GlassButton.primary(
           onPressed: () {
             if (!_formKey.currentState!.validate()) return;
             Navigator.of(context).pop(

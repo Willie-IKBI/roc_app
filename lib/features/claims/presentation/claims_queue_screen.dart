@@ -2,13 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/design_tokens.dart';
 import '../../../core/theme/roc_color_scheme.dart';
+import '../../../core/widgets/glass_badge.dart';
+import '../../../core/widgets/glass_card.dart';
 import '../../claims/controller/queue_controller.dart';
 import '../../../domain/models/claim_summary.dart';
 import '../../../domain/value_objects/claim_enums.dart';
 
 class ClaimsQueueScreen extends ConsumerStatefulWidget {
-  const ClaimsQueueScreen({super.key});
+  const ClaimsQueueScreen({
+    super.key,
+    this.initialStatusFilter,
+  });
+
+  final ClaimStatus? initialStatusFilter;
 
   @override
   ConsumerState<ClaimsQueueScreen> createState() => _ClaimsQueueScreenState();
@@ -19,6 +27,12 @@ class _ClaimsQueueScreenState extends ConsumerState<ClaimsQueueScreen> {
   PriorityLevel? _priorityFilter;
   String? _insurerFilter;
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _statusFilter = widget.initialStatusFilter;
+  }
 
   @override
   void dispose() {
@@ -220,12 +234,13 @@ class _ClaimCard extends StatelessWidget {
         ? theme.colorScheme.onSecondary
         : theme.colorScheme.onSurfaceVariant;
 
-    return Card(
+    return GlassCard(
+      margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(DesignTokens.radiusLarge),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(DesignTokens.spaceM),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -237,29 +252,25 @@ class _ClaimCard extends StatelessWidget {
                     style: theme.textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  Chip(
-                    backgroundColor: _statusColor(claim.status),
-                    label: Text(
-                      claim.status.label,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: RocColors.white),
-                    ),
+                  GlassBadge.custom(
+                    label: claim.status.label,
+                    color: _statusColor(claim.status),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: DesignTokens.spaceS),
               Text(
                 claim.clientFullName,
                 style: theme.textTheme
                     .bodyLarge
                     ?.copyWith(fontWeight: FontWeight.w600),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: DesignTokens.spaceXS),
               Text(
                 claim.addressShort,
                 style: theme.textTheme.bodyMedium,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: DesignTokens.spaceM),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -298,17 +309,17 @@ class _ClaimCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: DesignTokens.spaceM),
               ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
                 child: LinearProgressIndicator(
                   minHeight: 6,
                   value: _slaProgress(),
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                  backgroundColor: DesignTokens.glassBase(theme.brightness),
                   valueColor: AlwaysStoppedAnimation<Color>(slaColor),
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: DesignTokens.spaceS),
               Text(
                 'Elapsed ${claim.elapsed.inMinutes}m of ${claim.slaTarget.inMinutes}m target',
                 style: theme.textTheme.labelSmall?.copyWith(color: slaColor),
@@ -418,15 +429,14 @@ class _FiltersBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Filters', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Wrap(
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Filters', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 12),
+          Wrap(
               spacing: 16,
               runSpacing: 12,
               children: [
@@ -509,8 +519,7 @@ class _FiltersBar extends StatelessWidget {
                 ),
               ],
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

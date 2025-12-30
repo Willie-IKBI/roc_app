@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_input.dart';
 import '../controller/auth_controller.dart';
 import 'widgets/auth_scaffold.dart';
 
@@ -99,8 +101,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'New password',
+                    decoration: GlassInput.decoration(
+                      context: context,
+                      label: 'New password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -127,8 +130,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                   TextFormField(
                     controller: _confirmPasswordController,
                     obscureText: _obscureConfirmPassword,
-                    decoration: InputDecoration(
-                      labelText: 'Confirm password',
+                    decoration: GlassInput.decoration(
+                      context: context,
+                      label: 'Confirm password',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -152,7 +156,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
                     },
                   ),
                   const SizedBox(height: 24),
-                  FilledButton(
+                  GlassButton.primary(
                     onPressed: resetState.isLoading ? null : _handleSubmit,
                     child: resetState.isLoading
                         ? const SizedBox.square(
@@ -216,7 +220,7 @@ class _TokenMissingState extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 24),
-        FilledButton(
+        GlassButton.primary(
           onPressed: () => GoRouter.of(context).go('/forgot-password'),
           child: const Text('Request new link'),
         ),

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show PostgrestException, SupabaseClient;
 
 import '../../core/errors/domain_error.dart';
+import '../../core/logging/logger.dart';
 import '../../core/utils/result.dart';
 import '../../domain/models/estate.dart';
 import '../clients/supabase_client.dart';
@@ -22,7 +23,7 @@ class EstateRepository {
     try {
       final data = await _client
           .from('estates')
-          .select('*')
+          .select('id, tenant_id, name, suburb, city, province, postal_code, created_at, updated_at')
           .eq('tenant_id', tenantId)
           .order('name');
       final rows = (data as List)
@@ -32,8 +33,19 @@ class EstateRepository {
           .toList(growable: false);
       return Result.ok(rows);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch estates for tenant $tenantId',
+        name: 'EstateRepository',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching estates for tenant $tenantId',
+        name: 'EstateRepository',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
@@ -54,15 +66,29 @@ class EstateRepository {
           'postal_code': input.postalCode!.trim(),
       };
 
-      final record =
-          await _client.from('estates').insert(payload).select('*').single();
+      final record = await _client
+          .from('estates')
+          .insert(payload)
+          .select('id, tenant_id, name, suburb, city, province, postal_code, created_at, updated_at')
+          .single();
 
       return Result.ok(
         EstateRow.fromJson(Map<String, dynamic>.from(record as Map)).toDomain(),
       );
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to create estate for tenant $tenantId',
+        name: 'EstateRepository',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error creating estate for tenant $tenantId',
+        name: 'EstateRepository',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }

@@ -66,5 +66,43 @@ class ClaimDetailController extends _$ClaimDetailController {
       ref.invalidate(claimsQueueControllerProvider());
     }
   }
+
+  Future<void> updateTechnician({
+    required String claimId,
+    String? technicianId,
+  }) async {
+    state = const AsyncLoading();
+    final repository = ref.read(claimRepositoryProvider);
+    final result = await repository.updateTechnician(
+      claimId: claimId,
+      technicianId: technicianId,
+    );
+    if (result.isErr) {
+      state = AsyncError(result.error, StackTrace.current);
+    } else {
+      state = AsyncData(result.data);
+      ref.invalidate(claimsQueueControllerProvider());
+    }
+  }
+
+  Future<void> updateAppointment({
+    required String claimId,
+    DateTime? appointmentDate,
+    String? appointmentTime,
+  }) async {
+    state = const AsyncLoading();
+    final repository = ref.read(claimRepositoryProvider);
+    final result = await repository.updateAppointment(
+      claimId: claimId,
+      appointmentDate: appointmentDate,
+      appointmentTime: appointmentTime,
+    );
+    if (result.isErr) {
+      state = AsyncError(result.error, StackTrace.current);
+    } else {
+      state = AsyncData(result.data);
+      ref.invalidate(claimsQueueControllerProvider());
+    }
+  }
 }
 

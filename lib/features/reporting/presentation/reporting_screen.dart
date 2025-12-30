@@ -2,79 +2,164 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/theme/design_tokens.dart';
 import '../../../core/theme/roc_color_scheme.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
 import '../../../domain/models/daily_claim_report.dart';
 import '../controller/reporting_controller.dart';
 import '../domain/reporting_state.dart';
+import 'widgets/report_tabs.dart';
+import 'widgets/agent_performance_report.dart';
+import 'widgets/status_distribution_report.dart';
+import 'widgets/damage_cause_report.dart';
+import 'widgets/geographic_report.dart';
+import 'widgets/insurer_performance_report.dart';
 
-class ReportingScreen extends ConsumerWidget {
+class ReportingScreen extends ConsumerStatefulWidget {
   const ReportingScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final reportAsync = ref.watch(reportingControllerProvider);
+  ConsumerState<ReportingScreen> createState() => _ReportingScreenState();
+}
 
+class _ReportingScreenState extends ConsumerState<ReportingScreen> {
+  ReportTab _selectedTab = ReportTab.overview;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reporting'),
-      ),
-      body: SafeArea(
-        child: reportAsync.when(
-          data: (data) {
-            final reports = data.reports;
-            if (reports.isEmpty) {
-              return const _EmptyReportingState();
-            }
-
-            return RefreshIndicator(
-              onRefresh: () =>
-                  ref.read(reportingControllerProvider.notifier).refresh(),
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _WindowSelector(
-                    selected: data.window,
-                    onChanged: (window) => ref
-                        .read(reportingControllerProvider.notifier)
-                        .changeWindow(window),
-                  ),
-                  const SizedBox(height: 16),
-                  _SummaryCards(
-                    totalClaims: data.totalClaims,
-                    averageMinutes: data.averageMinutesToFirstContact,
-                    complianceRate: data.complianceRate,
-                    window: data.window,
-                  ),
-                  const SizedBox(height: 24),
-                  _DailyTrendChart(
-                    reports: reports,
-                    window: data.window,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Daily performance',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  for (final report in reports)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _DailyReportCard(report: report),
-                    ),
-                ],
-              ),
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _ErrorReportState(
-            message: error.toString(),
-            onRetry: () =>
-                ref.read(reportingControllerProvider.notifier).refresh(),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: _TabBar(
+            selectedTab: _selectedTab,
+            onTabSelected: (tab) => setState(() => _selectedTab = tab),
           ),
         ),
+      ),
+      body: SafeArea(
+        child: _buildTabContent(),
+      ),
+    );
+  }
+
+  Widget _buildTabContent() {
+    switch (_selectedTab) {
+      case ReportTab.overview:
+        return _buildOverviewTab();
+      case ReportTab.agentPerformance:
+        return const AgentPerformanceReportWidget();
+      case ReportTab.statusDistribution:
+        return const StatusDistributionReportWidget();
+      case ReportTab.damageCause:
+        return const DamageCauseReportWidget();
+      case ReportTab.geographic:
+        return const GeographicReportWidget();
+      case ReportTab.insurerPerformance:
+        return const InsurerPerformanceReportWidget();
+    }
+  }
+
+  Widget _buildOverviewTab() {
+    final reportAsync = ref.watch(reportingControllerProvider);
+
+    return reportAsync.when(
+      data: (data) {
+        final reports = data.reports;
+        if (reports.isEmpty) {
+          return const _EmptyReportingState();
+        }
+
+        return RefreshIndicator(
+          onRefresh: () =>
+              ref.read(reportingControllerProvider.notifier).refresh(),
+          child: ListView(
+            padding: const EdgeInsets.all(DesignTokens.spaceM),
+            children: [
+              GlassCard(
+                padding: const EdgeInsets.all(DesignTokens.spaceM),
+                child: _WindowSelector(
+                  selected: data.window,
+                  onChanged: (window) => ref
+                      .read(reportingControllerProvider.notifier)
+                      .changeWindow(window),
+                ),
+              ),
+              const SizedBox(height: DesignTokens.spaceM),
+              _SummaryCards(
+                totalClaims: data.totalClaims,
+                averageMinutes: data.averageMinutesToFirstContact,
+                complianceRate: data.complianceRate,
+                window: data.window,
+              ),
+              const SizedBox(height: DesignTokens.spaceL),
+              _DailyTrendChart(
+                reports: reports,
+                window: data.window,
+              ),
+              const SizedBox(height: DesignTokens.spaceL),
+              Text(
+                'Daily performance',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: DesignTokens.spaceM),
+              for (final report in reports)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: DesignTokens.spaceM),
+                  child: _DailyReportCard(report: report),
+                ),
+            ],
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => _ErrorReportState(
+        message: error.toString(),
+        onRetry: () =>
+            ref.read(reportingControllerProvider.notifier).refresh(),
+      ),
+    );
+  }
+}
+
+class _TabBar extends StatelessWidget {
+  const _TabBar({
+    required this.selectedTab,
+    required this.onTabSelected,
+  });
+
+  final ReportTab selectedTab;
+  final ValueChanged<ReportTab> onTabSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spaceM),
+      child: Row(
+        children: ReportTab.values.map((tab) {
+          final isSelected = tab == selectedTab;
+          return Padding(
+            padding: const EdgeInsets.only(right: DesignTokens.spaceS),
+            child: ChoiceChip(
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(tab.icon, size: 18),
+                  const SizedBox(width: 8),
+                  Text(tab.label),
+                ],
+              ),
+              selected: isSelected,
+              onSelected: (_) => onTabSelected(tab),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -227,11 +312,10 @@ class _SummaryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      color: color.withValues(alpha: 0.12),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
+    return GlassCard(
+      backgroundColor: color.withValues(alpha: 0.12),
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
+      child: Row(
           children: [
             CircleAvatar(
               backgroundColor: color,
@@ -252,7 +336,6 @@ class _SummaryTile extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }
@@ -283,12 +366,11 @@ class _DailyTrendChart extends StatelessWidget {
       (max, report) => report.claimsCaptured > max ? report.claimsCaptured : max,
     );
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             Text(
               'Claims captured trend',
               style: theme.textTheme.titleMedium,
@@ -360,7 +442,6 @@ class _DailyTrendChart extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }
@@ -381,17 +462,16 @@ class _DailyReportCard extends StatelessWidget {
     final compliancePercent = (complianceRate * 100).clamp(0, 100);
     final avgMinutes = report.averageMinutesToFirstContact;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  formattedDate,
+    return GlassCard(
+      padding: const EdgeInsets.all(DesignTokens.spaceM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                formattedDate,
                   style: theme.textTheme.titleMedium
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
@@ -431,7 +511,6 @@ class _DailyReportCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -543,10 +622,16 @@ class _ErrorReportState extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
+            GlassButton.primary(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.refresh),
+                  SizedBox(width: DesignTokens.spaceS),
+                  Text('Retry'),
+                ],
+              ),
             ),
           ],
         ),

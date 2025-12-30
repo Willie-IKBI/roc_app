@@ -1,6 +1,7 @@
 enum RoleType {
   admin('admin'),
-  claimAgent('claim_agent');
+  claimAgent('claim_agent'),
+  technician('technician');
 
   const RoleType(this.value);
 
@@ -19,6 +20,8 @@ enum RoleType {
         return 'Admin';
       case RoleType.claimAgent:
         return 'Claim agent';
+      case RoleType.technician:
+        return 'Technician';
     }
   }
 }

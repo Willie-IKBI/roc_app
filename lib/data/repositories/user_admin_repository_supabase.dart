@@ -27,6 +27,15 @@ class UserAdminRepositorySupabase implements UserAdminRepository {
   }
 
   @override
+  Future<Result<List<UserAccount>>> fetchTechnicians() async {
+    final response = await _remote.fetchTechnicians();
+    if (response.isErr) {
+      return Result.err(response.error);
+    }
+    return Result.ok(response.data.map((row) => row.toDomain()).toList());
+  }
+
+  @override
   Future<Result<void>> updateRole({
     required String userId,
     required RoleType role,

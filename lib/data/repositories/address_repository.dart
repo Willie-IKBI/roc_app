@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show PostgrestException, SupabaseClient;
 
 import '../../core/errors/domain_error.dart';
+import '../../core/logging/logger.dart';
 import '../../core/utils/result.dart';
 import '../../domain/models/address.dart';
 import '../clients/supabase_client.dart';
@@ -43,8 +44,19 @@ class AddressRepository {
       final row = AddressRow.fromJson(Map<String, dynamic>.from(data as Map));
       return Result.ok(row.toDomain());
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to find address by placeId: $placeId for tenant $tenantId',
+        name: 'AddressRepository',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error finding address by placeId: $placeId for tenant $tenantId',
+        name: 'AddressRepository',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }

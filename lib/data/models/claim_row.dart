@@ -28,6 +28,9 @@ class ClaimRow {
     required this.surgeProtectionAtDb,
     required this.surgeProtectionAtPlug,
     this.agentId,
+    this.technicianId,
+    this.appointmentDate,
+    this.appointmentTime,
     required this.slaStartedAt,
     this.closedAt,
     this.notesPublic,
@@ -84,6 +87,15 @@ class ClaimRow {
   @JsonKey(name: 'agent_id')
   final String? agentId;
 
+  @JsonKey(name: 'technician_id')
+  final String? technicianId;
+
+  @JsonKey(name: 'appointment_date')
+  final DateTime? appointmentDate;
+
+  @JsonKey(name: 'appointment_time')
+  final String? appointmentTime;
+
   @JsonKey(name: 'sla_started_at')
   final DateTime slaStartedAt;
 
@@ -126,6 +138,9 @@ class ClaimRow {
       surgeProtectionAtDb: surgeProtectionAtDb,
       surgeProtectionAtPlug: surgeProtectionAtPlug,
       agentId: agentId,
+      technicianId: technicianId,
+      appointmentDate: appointmentDate,
+      appointmentTime: appointmentTime,
       slaStartedAt: slaStartedAt,
       closedAt: closedAt,
       notesPublic: notesPublic,

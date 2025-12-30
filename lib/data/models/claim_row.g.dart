@@ -22,6 +22,11 @@ ClaimRow _$ClaimRowFromJson(Map<String, dynamic> json) => ClaimRow(
   surgeProtectionAtDb: json['surge_protection_at_db'] as bool,
   surgeProtectionAtPlug: json['surge_protection_at_plug'] as bool,
   agentId: json['agent_id'] as String?,
+  technicianId: json['technician_id'] as String?,
+  appointmentDate: json['appointment_date'] == null
+      ? null
+      : DateTime.parse(json['appointment_date'] as String),
+  appointmentTime: json['appointment_time'] as String?,
   slaStartedAt: DateTime.parse(json['sla_started_at'] as String),
   closedAt: json['closed_at'] == null
       ? null
@@ -48,6 +53,9 @@ Map<String, dynamic> _$ClaimRowToJson(ClaimRow instance) => <String, dynamic>{
   'surge_protection_at_db': instance.surgeProtectionAtDb,
   'surge_protection_at_plug': instance.surgeProtectionAtPlug,
   'agent_id': instance.agentId,
+  'technician_id': instance.technicianId,
+  'appointment_date': instance.appointmentDate?.toIso8601String(),
+  'appointment_time': instance.appointmentTime,
   'sla_started_at': instance.slaStartedAt.toIso8601String(),
   'closed_at': instance.closedAt?.toIso8601String(),
   'notes_public': instance.notesPublic,

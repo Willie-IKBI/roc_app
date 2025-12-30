@@ -71,5 +71,18 @@ abstract class ClaimRemoteDataSource {
     required String insurerId,
     required String claimNumber,
   });
+
+  Future<Result<void>> updateTechnician({
+    required String claimId,
+    required String tenantId,
+    String? technicianId,
+  });
+
+  Future<Result<void>> updateAppointment({
+    required String claimId,
+    required String tenantId,
+    DateTime? appointmentDate,
+    String? appointmentTime,
+  });
 }
 

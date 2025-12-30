@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/design_tokens.dart';
+import '../../../core/widgets/ambient_glow.dart';
+import '../../../core/widgets/glass_button.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/glass_empty_state.dart';
+import '../../../core/widgets/glass_error_state.dart';
+import '../../../core/widgets/pipeline_flow.dart';
 import '../../../domain/models/claim_summary.dart';
 import '../../../domain/value_objects/claim_enums.dart';
 import '../controller/dashboard_controller.dart';
@@ -39,7 +46,8 @@ class DashboardScreen extends ConsumerWidget {
                 ref.read(dashboardControllerProvider.notifier).refresh(),
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stackTrace) => _DashboardError(
+          error: (error, stackTrace) => GlassErrorState(
+            title: 'Could not load dashboard',
             message: error.toString(),
             onRetry: () =>
                 ref.read(dashboardControllerProvider.notifier).refresh(),
@@ -61,41 +69,62 @@ class _DashboardContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth >= 1200;
-          final isTablet = constraints.maxWidth >= 900;
-          final horizontalPadding = isDesktop ? 48.0 : 24.0;
+    final theme = Theme.of(context);
+    
+    return Stack(
+      children: [
+        // Ambient glow background
+        if (theme.brightness == Brightness.dark) ...[
+          AmbientGlow(
+            radius: 320,
+            color: DesignTokens.primaryRed.withValues(alpha: 0.2),
+            top: -180,
+            right: -140,
+          ),
+          AmbientGlow(
+            radius: 360,
+            color: const Color(0x331E88F5), // violet
+            bottom: -220,
+            left: -160,
+          ),
+        ],
+        RefreshIndicator(
+          onRefresh: onRefresh,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isDesktop = constraints.maxWidth >= 1200;
+              final isTablet = constraints.maxWidth >= 900;
+              final horizontalPadding = isDesktop ? DesignTokens.spaceXL : DesignTokens.spaceL;
 
-          return ListView(
-            padding: EdgeInsets.symmetric(
-              horizontal: horizontalPadding,
-              vertical: 28,
-            ),
-            physics: const AlwaysScrollableScrollPhysics(),
-            children: [
-              _QuickActionsBar(isDesktop: isDesktop),
-              const SizedBox(height: 28),
-              _HeroMetricsGrid(
-                state: state,
-                isDesktop: isDesktop,
-                isTablet: isTablet,
-              ),
-              const SizedBox(height: 32),
-              _CriticalFocusStrip(
-                state: state,
-                isDesktop: isDesktop,
-              ),
-              const SizedBox(height: 32),
-              _PipelineOverview(state: state),
-              const SizedBox(height: 32),
-              _LatestActivityTimeline(claims: state.recentClaims),
-            ],
-          );
-        },
-      ),
+              return ListView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: DesignTokens.spaceL,
+                ),
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  _QuickActionsBar(isDesktop: isDesktop),
+                  const SizedBox(height: DesignTokens.spaceL),
+                  _HeroMetricsGrid(
+                    state: state,
+                    isDesktop: isDesktop,
+                    isTablet: isTablet,
+                  ),
+                  const SizedBox(height: DesignTokens.spaceXL),
+                  _CriticalFocusStrip(
+                    state: state,
+                    isDesktop: isDesktop,
+                  ),
+                  const SizedBox(height: DesignTokens.spaceXL),
+                  _PipelineOverview(state: state),
+                  const SizedBox(height: DesignTokens.spaceXL),
+                  _LatestActivityTimeline(claims: state.recentClaims),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -137,15 +166,27 @@ class _QuickActionsBar extends StatelessWidget {
           runSpacing: 12,
           alignment: WrapAlignment.end,
           children: [
-            FilledButton.icon(
+            GlassButton.primary(
               onPressed: () => context.pushNamed('claim-create'),
-              icon: const Icon(Icons.add_circle_outline),
-              label: const Text('Capture claim'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.add_circle_outline),
+                  SizedBox(width: DesignTokens.spaceS),
+                  Text('Capture claim'),
+                ],
+              ),
             ),
-            OutlinedButton.icon(
+            GlassButton.outlined(
               onPressed: () => context.pushNamed('claims-queue'),
-              icon: const Icon(Icons.list_alt_outlined),
-              label: const Text('View queue'),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.list_alt_outlined),
+                  SizedBox(width: DesignTokens.spaceS),
+                  Text('View queue'),
+                ],
+              ),
             ),
           ],
         ),
@@ -272,51 +313,45 @@ class _MetricEmphasisCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 12),
-          ),
-        ],
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: DesignTokens.spaceL,
+        vertical: DesignTokens.spaceL,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(
+              horizontal: DesignTokens.spaceM,
+              vertical: DesignTokens.spaceXS,
+            ),
             decoration: BoxDecoration(
               color: accent.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(DesignTokens.radiusPill),
             ),
             child: Text(
               title,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: accent.darken(),
+                color: accent,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 1,
               ),
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: DesignTokens.spaceM),
           Text(
             value,
             style: theme.textTheme.displaySmall?.copyWith(
-              color: accent.darken(),
+              color: accent,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: DesignTokens.spaceM),
           Text(
             subtitle,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+              color: DesignTokens.textSecondary(theme.brightness),
             ),
           ),
         ],
@@ -341,13 +376,11 @@ class _MetricTileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.black12),
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: DesignTokens.spaceM,
+        vertical: DesignTokens.spaceM,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -450,12 +483,7 @@ class _FocusPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final showClaims = claims.take(4).toList();
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black12),
-      ),
+    return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -487,10 +515,10 @@ class _FocusPanel extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           if (showClaims.isEmpty)
-            _EmptyState(
+            GlassEmptyState(
+              icon: Icons.verified_outlined,
               title: emptyTitle,
               description: emptyDescription,
-              icon: Icons.verified_outlined,
             )
           else
             Column(
@@ -498,7 +526,10 @@ class _FocusPanel extends StatelessWidget {
                 for (final claim in showClaims) ...[
                   _FocusClaimTile(claim: claim, accent: accent),
                   if (claim != showClaims.last)
-                    Divider(color: Colors.black12, height: 20),
+                    Divider(
+                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                      height: 20,
+                    ),
                 ],
                 if (claims.length > showClaims.length)
                   Padding(
@@ -619,39 +650,78 @@ class _PipelineOverview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final now = DateTime.now();
+    final oneHourAgo = now.subtract(const Duration(hours: 1));
+
+    // Main workflow stages (sequential flow)
+    final mainStages = [
+      ClaimStatus.newClaim,
+      ClaimStatus.inContact,
+      ClaimStatus.awaitingClient,
+      ClaimStatus.scheduled,
+      ClaimStatus.workInProgress,
+    ];
+
+    // Calculate activity indicators (claims added/changed in last hour)
+    final activityCounts = <ClaimStatus, int>{};
+    for (final claim in state.claims) {
+      // Use slaStartedAt as proxy for when claim entered this status
+      if (claim.slaStartedAt.isAfter(oneHourAgo)) {
+        activityCounts.update(claim.status, (value) => value + 1, ifAbsent: () => 1);
+      }
+    }
+
+    // Calculate total for progress bars (using total active claims as capacity)
+    final totalActive = state.totalActiveClaims;
+    final maxCount = mainStages.map((s) => state.summaryCount(s)).fold(0, (a, b) => a > b ? a : b);
+
+    final stages = mainStages.map((status) {
+      final count = state.summaryCount(status);
+      final activity = activityCounts[status];
+      // Progress based on count relative to max (capped at 1.0)
+      final progress = maxCount > 0 ? (count / maxCount).clamp(0.0, 1.0) : 0.0;
+
+      return PipelineStage(
+        label: _statusLabel(status).toUpperCase(),
+        count: count,
+        icon: _statusIcon(status),
+        activityCount: activity,
+        activityLabel: activity != null && activity > 0 ? 'this hour' : null,
+        progress: progress,
+      );
+    }).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Pipeline status',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        Row(
+          children: [
+            Text(
+              'Pipeline status',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: DesignTokens.spaceS),
+            Text(
+              'Live operational flow visualization',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final crossAxisCount = constraints.maxWidth >= 1100
-                ? 4
-                : constraints.maxWidth >= 820
-                    ? 3
-                    : 2;
-            return GridView.count(
-              crossAxisCount: crossAxisCount,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.8,
-              children: [
-                for (final status in ClaimStatus.values)
-                  _PipelineTile(
-                    label: _statusLabel(status),
-                    count: state.summaryCount(status),
-                    icon: _statusIcon(status),
-                  ),
-              ],
-            );
+        const SizedBox(height: DesignTokens.spaceL),
+        PipelineFlow(
+          stages: stages,
+          onStageTap: (index) {
+            if (index >= 0 && index < mainStages.length) {
+              final status = mainStages[index];
+              context.pushNamed(
+                'claims-queue',
+                queryParameters: {'status': status.value},
+              );
+            }
           },
         ),
       ],
@@ -661,13 +731,13 @@ class _PipelineOverview extends StatelessWidget {
   IconData _statusIcon(ClaimStatus status) {
     switch (status) {
       case ClaimStatus.newClaim:
-        return Icons.fiber_new;
+        return Icons.add_circle_outline;
       case ClaimStatus.inContact:
-        return Icons.phone_forwarded_outlined;
+        return Icons.phone_outlined;
       case ClaimStatus.awaitingClient:
         return Icons.schedule_outlined;
       case ClaimStatus.scheduled:
-        return Icons.event_available_outlined;
+        return Icons.event_outlined;
       case ClaimStatus.workInProgress:
         return Icons.build_circle_outlined;
       case ClaimStatus.onHold:
@@ -680,64 +750,6 @@ class _PipelineOverview extends StatelessWidget {
   }
 }
 
-class _PipelineTile extends StatelessWidget {
-  const _PipelineTile({
-    required this.label,
-    required this.count,
-    required this.icon,
-  });
-
-  final String label;
-  final int count;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.black12),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: theme.colorScheme.primary),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$count claims',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _LatestActivityTimeline extends StatelessWidget {
   const _LatestActivityTimeline({required this.claims});
@@ -747,12 +759,7 @@ class _LatestActivityTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black12),
-      ),
+    return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -772,11 +779,11 @@ class _LatestActivityTimeline extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           if (claims.isEmpty)
-            const _EmptyState(
+            const GlassEmptyState(
+              icon: Icons.inbox_outlined,
               title: 'No activity yet today',
               description:
                   'Queue updates and escalations will appear here as agents respond.',
-              icon: Icons.inbox_outlined,
             )
           else
             Column(
@@ -873,56 +880,6 @@ class _TimelineTile extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.title,
-    required this.description,
-    required this.icon,
-  });
-
-  final String title;
-  final String description;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: Row(
-        children: [
-          Icon(icon, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 String _statusLabel(ClaimStatus status) {
   switch (status) {
@@ -954,45 +911,4 @@ extension _ColorShade on Color {
   }
 }
 
-class _DashboardError extends StatelessWidget {
-  const _DashboardError({
-    required this.message,
-    required this.onRetry,
-  });
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline,
-                size: 48, color: theme.colorScheme.error),
-            const SizedBox(height: 12),
-            Text('Could not load dashboard',
-                style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
