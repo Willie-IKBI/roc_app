@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +9,7 @@ import 'core/logging/logger.dart';
 import 'core/routing/app_router.dart';
 import 'core/theme/theme_mode_provider.dart';
 import 'core/theme/theme_preference_provider.dart';
+import 'core/utils/web_console.dart';
 import 'core/widgets/glass_error_state.dart';
 
 Future<void> main() async {
@@ -37,7 +37,7 @@ Future<void> main() async {
   ErrorWidget.builder = (FlutterErrorDetails details) {
     // Always log errors to console, even in production
     if (kIsWeb) {
-      html.window.console.error(
+      WebConsole.error(
         'Flutter Error Widget: ${details.exception}\n${details.stack?.toString() ?? 'No stack trace'}',
       );
     }
@@ -54,7 +54,7 @@ Future<void> main() async {
           onRetry: () {
             // Reload the page in web
             if (kIsWeb) {
-              html.window.location.reload();
+              WebConsole.reload();
             }
           },
         ),
@@ -73,8 +73,8 @@ Future<void> main() async {
     
     // Also log to browser console in production for debugging
     if (kIsWeb) {
-      html.window.console.error(
-        'Platform Error: $error\n${stack?.toString() ?? 'No stack trace'}',
+      WebConsole.error(
+        'Platform Error: $error\n${stack.toString()}',
       );
     }
     

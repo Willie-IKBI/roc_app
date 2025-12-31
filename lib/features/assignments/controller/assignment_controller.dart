@@ -1,110 +1,195 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../../../data/clients/supabase_client.dart';
+import '../../../core/errors/domain_error.dart';
+import '../../../data/repositories/assignments_repository_supabase.dart';
 import '../../../data/repositories/claim_repository_supabase.dart';
 import '../../../data/repositories/user_admin_repository_supabase.dart';
-import '../../../domain/models/claim.dart';
 import '../../../domain/models/claim_summary.dart';
 import '../../../domain/value_objects/claim_enums.dart';
 import '../../../core/logging/logger.dart';
 import '../../scheduling/controller/scheduling_controller.dart';
 
 part 'assignment_controller.g.dart';
+part 'assignment_controller.freezed.dart';
 
-/// Fetches assignable jobs with filtering support.
+/// State for paginated assignable jobs
+@freezed
+abstract class AssignableJobsState with _$AssignableJobsState {
+  const factory AssignableJobsState({
+    @Default([]) List<ClaimSummary> items,
+    @Default(false) bool isLoading,
+    @Default(false) bool isLoadingMore,
+    @Default(false) bool hasMore,
+    String? nextCursor,
+    DomainError? error,
+    ClaimStatus? statusFilter,
+    bool? assignedFilter,
+    String? technicianIdFilter,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) = _AssignableJobsState;
+}
+
 @riverpod
-Future<List<ClaimSummary>> assignableJobs(
-  Ref ref, {
-  ClaimStatus? statusFilter,
-  bool? assignedFilter, // null = all, true = assigned, false = unassigned
-  String? technicianIdFilter,
-  DateTime? dateFrom,
-  DateTime? dateTo,
-}) async {
-  final client = ref.watch(supabaseClientProvider);
-  final claimRepository = ref.watch(claimRepositoryProvider);
-
-  try {
-    // Use fetchQueue as base, then filter in memory for now
-    // In the future, we could add a more sophisticated query method
-    final queueResult = await claimRepository.fetchQueue(status: statusFilter);
-    
-    if (queueResult.isErr) {
-      AppLogger.error(
-        'Failed to fetch assignable jobs',
-        name: 'AssignmentController',
-        error: queueResult.error,
-      );
-      return [];
-    }
-
-    var claims = queueResult.data;
-
-    // Filter by assignment status
-    if (assignedFilter != null) {
-      // We need to fetch full claims to check technician_id
-      // For now, filter by checking if we can get technician info
-      final filteredClaims = <ClaimSummary>[];
-      for (final claimSummary in claims) {
-        final claimResult = await claimRepository.fetchById(claimSummary.claimId);
-        if (claimResult.isOk) {
-          final claim = claimResult.data;
-          final isAssigned = claim.technicianId != null;
-          if (assignedFilter == isAssigned) {
-            filteredClaims.add(claimSummary);
-          }
-        }
-      }
-      claims = filteredClaims;
-    }
-
-    // Filter by technician
-    if (technicianIdFilter != null) {
-      final filteredClaims = <ClaimSummary>[];
-      for (final claimSummary in claims) {
-        final claimResult = await claimRepository.fetchById(claimSummary.claimId);
-        if (claimResult.isOk) {
-          final claim = claimResult.data;
-          if (claim.technicianId == technicianIdFilter) {
-            filteredClaims.add(claimSummary);
-          }
-        }
-      }
-      claims = filteredClaims;
-    }
-
-    // Filter by date range (appointment date)
-    if (dateFrom != null || dateTo != null) {
-      final filteredClaims = <ClaimSummary>[];
-      for (final claimSummary in claims) {
-        final claimResult = await claimRepository.fetchById(claimSummary.claimId);
-        if (claimResult.isOk) {
-          final claim = claimResult.data;
-          if (claim.appointmentDate != null) {
-            final appointmentDate = claim.appointmentDate!;
-            final matchesFrom = dateFrom == null || appointmentDate.isAfter(dateFrom.subtract(const Duration(days: 1)));
-            final matchesTo = dateTo == null || appointmentDate.isBefore(dateTo.add(const Duration(days: 1)));
-            if (matchesFrom && matchesTo) {
-              filteredClaims.add(claimSummary);
-            }
-          } else if (dateFrom == null && dateTo == null) {
-            // Include claims without appointment date if no date filter
-            filteredClaims.add(claimSummary);
-          }
-        }
-      }
-      claims = filteredClaims;
-    }
-
-    return claims;
-  } catch (error, stackTrace) {
-    AppLogger.error(
-      'Error fetching assignable jobs',
-      name: 'AssignmentController',
-      error: error,
-      stackTrace: stackTrace,
+class AssignableJobsController extends _$AssignableJobsController {
+  @override
+  Future<AssignableJobsState> build({
+    ClaimStatus? statusFilter,
+    bool? assignedFilter,
+    String? technicianIdFilter,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    // Initial load
+    return await _loadFirstPage(
+      statusFilter: statusFilter,
+      assignedFilter: assignedFilter,
+      technicianIdFilter: technicianIdFilter,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
     );
-    return [];
+  }
+
+  /// Load first page (reset pagination)
+  Future<AssignableJobsState> _loadFirstPage({
+    ClaimStatus? statusFilter,
+    bool? assignedFilter,
+    String? technicianIdFilter,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    final currentState = state.asData?.value ?? AssignableJobsState();
+    state = AsyncValue.data(
+      currentState.copyWith(
+        isLoading: true,
+        error: null,
+        statusFilter: statusFilter,
+        assignedFilter: assignedFilter,
+        technicianIdFilter: technicianIdFilter,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+        items: [], // Clear items on first page load
+      ),
+    );
+
+    final repository = ref.read(assignmentsRepositoryProvider);
+    final result = await repository.fetchAssignableJobsPage(
+      cursor: null, // First page
+      limit: 50,
+      status: statusFilter,
+      assignedFilter: assignedFilter,
+      technicianId: technicianIdFilter,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+    );
+
+    if (result.isErr) {
+      return AssignableJobsState(
+        items: [],
+        isLoading: false,
+        error: result.error,
+        statusFilter: statusFilter,
+        assignedFilter: assignedFilter,
+        technicianIdFilter: technicianIdFilter,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+    }
+
+    final page = result.data;
+    return AssignableJobsState(
+      items: page.items,
+      isLoading: false,
+      hasMore: page.hasMore,
+      nextCursor: page.nextCursor,
+      statusFilter: statusFilter,
+      assignedFilter: assignedFilter,
+      technicianIdFilter: technicianIdFilter,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+    );
+  }
+
+  /// Load next page (append to existing items)
+  Future<void> loadNextPage() async {
+    final current = state.asData?.value;
+    if (current == null ||
+        current.isLoadingMore ||
+        !current.hasMore ||
+        current.nextCursor == null) {
+      return; // Already loading, no more data, or no cursor
+    }
+
+    // Update state: loading more
+    state = AsyncValue.data(
+      current.copyWith(isLoadingMore: true, error: null),
+    );
+
+    final repository = ref.read(assignmentsRepositoryProvider);
+    final result = await repository.fetchAssignableJobsPage(
+      cursor: current.nextCursor,
+      limit: 50,
+      status: current.statusFilter,
+      assignedFilter: current.assignedFilter,
+      technicianId: current.technicianIdFilter,
+      dateFrom: current.dateFrom,
+      dateTo: current.dateTo,
+    );
+
+    if (result.isErr) {
+      // Update state: error (but keep existing items)
+      state = AsyncValue.data(
+        current.copyWith(
+          isLoadingMore: false,
+          error: result.error,
+        ),
+      );
+      return;
+    }
+
+    final page = result.data;
+    // Update state: append new items
+    state = AsyncValue.data(
+      current.copyWith(
+        items: [...current.items, ...page.items],
+        isLoadingMore: false,
+        hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
+        error: null,
+      ),
+    );
+  }
+
+  /// Refresh (reload first page)
+  Future<void> refresh() async {
+    final current = state.asData?.value;
+    final newState = await _loadFirstPage(
+      statusFilter: current?.statusFilter,
+      assignedFilter: current?.assignedFilter,
+      technicianIdFilter: current?.technicianIdFilter,
+      dateFrom: current?.dateFrom,
+      dateTo: current?.dateTo,
+    );
+    state = AsyncValue.data(newState);
+  }
+
+  /// Update filters (reload first page)
+  Future<void> updateFilters({
+    ClaimStatus? statusFilter,
+    bool? assignedFilter,
+    String? technicianIdFilter,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    final newState = await _loadFirstPage(
+      statusFilter: statusFilter,
+      assignedFilter: assignedFilter,
+      technicianIdFilter: technicianIdFilter,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+    );
+    state = AsyncValue.data(newState);
   }
 }
 
@@ -160,7 +245,8 @@ class AssignmentController extends _$AssignmentController {
       }
 
       // Invalidate relevant providers
-      ref.invalidate(assignableJobsProvider);
+      // Note: assignableJobsControllerProvider will be refreshed by the UI when assignment completes
+      // We can't easily invalidate all filter combinations, so the UI should handle refresh
       ref.invalidate(dayScheduleProvider);
       ref.invalidate(unassignedAppointmentsProvider);
       

@@ -2,14 +2,14 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../domain/models/user_account.dart';
 import '../../../data/repositories/user_admin_repository_supabase.dart';
-import '../../../data/clients/supabase_client.dart';
+import '../../../data/repositories/technician_repository_supabase.dart';
 
 part 'technician_controller.g.dart';
 
 @riverpod
 Future<List<UserAccount>> technicians(Ref ref) async {
   final repository = ref.watch(userAdminRepositoryProvider);
-  final result = await repository.fetchTechnicians();
+  final result = await repository.fetchTechnicians(limit: 200);
   if (result.isErr) {
     throw result.error;
   }
@@ -21,30 +21,14 @@ Future<Map<String, int>> technicianAssignments(
   Ref ref, {
   required DateTime date,
 }) async {
-  final client = ref.watch(supabaseClientProvider);
-  final dateStr = date.toIso8601String().split('T')[0];
+  final repository = ref.watch(technicianRepositoryProvider);
+  final result = await repository.fetchTechnicianAssignments(date: date);
   
-  try {
-    // Safety limit: max 1000 appointments per day for assignment counting
-    final response = await client
-        .from('claims')
-        .select('technician_id')
-        .eq('appointment_date', dateStr)
-        .not('technician_id', 'is', null)
-        .limit(1000);
-    
-    final assignments = <String, int>{};
-    for (final row in response as List<dynamic>) {
-      final technicianId = row['technician_id'] as String?;
-      if (technicianId != null) {
-        assignments[technicianId] = (assignments[technicianId] ?? 0) + 1;
-      }
-    }
-    
-    return assignments;
-  } catch (err) {
-    return {};
+  if (result.isErr) {
+    throw result.error;
   }
+  
+  return result.data;
 }
 
 @riverpod
@@ -53,52 +37,26 @@ Future<Map<String, dynamic>> technicianAvailability(
   required String technicianId,
   required DateTime date,
 }) async {
-  final client = ref.watch(supabaseClientProvider);
-  final dateStr = date.toIso8601String().split('T')[0];
+  final repository = ref.watch(technicianRepositoryProvider);
+  final result = await repository.fetchTechnicianAvailability(
+    technicianId: technicianId,
+    date: date,
+  );
   
-  try {
-    // Fetch all appointments for this technician on this date
-    // Safety limit: max 100 appointments per technician per day
-    final response = await client
-        .from('claims')
-        .select('id, appointment_time, status')
-        .eq('technician_id', technicianId)
-        .eq('appointment_date', dateStr)
-        .not('appointment_time', 'is', null)
-        .order('appointment_time')
-        .limit(100);
-    
-    final appointments = <Map<String, dynamic>>[];
-    for (final row in response as List<dynamic>) {
-      appointments.add({
-        'id': row['id'] as String,
-        'time': row['appointment_time'] as String,
-        'status': row['status'] as String,
-      });
-    }
-    
-    // Calculate available time slots (assuming 1-hour slots from 8am to 5pm)
-    final availableSlots = <String>[];
-    final bookedTimes = appointments.map((a) => a['time'] as String).toSet();
-    
-    for (int hour = 8; hour < 17; hour++) {
-      final timeStr = '${hour.toString().padLeft(2, '0')}:00:00';
-      if (!bookedTimes.contains(timeStr)) {
-        availableSlots.add(timeStr);
-      }
-    }
-    
-    return {
-      'appointments': appointments,
-      'availableSlots': availableSlots,
-      'totalAppointments': appointments.length,
-    };
-  } catch (err) {
-    return {
-      'appointments': <Map<String, dynamic>>[],
-      'availableSlots': <String>[],
-      'totalAppointments': 0,
-    };
+  if (result.isErr) {
+    throw result.error;
   }
+  
+  // Convert to map format (for backward compatibility)
+  final availability = result.data;
+  return {
+    'appointments': availability.appointments.map((a) => {
+      'id': a.claimId,
+      'time': a.appointmentTime,
+      'status': a.status,
+    }).toList(),
+    'availableSlots': availability.availableSlots,
+    'totalAppointments': availability.totalAppointments,
+  };
 }
 

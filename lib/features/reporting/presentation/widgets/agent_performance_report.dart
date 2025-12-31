@@ -6,19 +6,29 @@ import '../../../../core/widgets/glass_card.dart';
 import '../../../../core/widgets/glass_empty_state.dart';
 import '../../../../core/widgets/glass_error_state.dart';
 import '../../../../domain/models/report_models.dart';
-import '../../../../data/clients/supabase_client.dart';
 import '../../../../data/repositories/reporting_repository_supabase.dart';
-import '../../../../data/datasources/supabase_reporting_remote_data_source.dart';
+import '../../controller/reporting_controller.dart';
+import '../../domain/reporting_state.dart';
 
 final agentPerformanceReportProvider = FutureProvider<List<AgentPerformanceReport>>((ref) async {
-  final client = ref.watch(supabaseClientProvider);
-  final dataSource = SupabaseReportingRemoteDataSource(client);
-  final repository = ReportingRepositorySupabase(dataSource);
-  final result = await repository.fetchAgentPerformanceReport();
+  // Get date range from reporting window
+  final window = ref.watch(reportingWindowControllerProvider);
+  final now = DateTime.now().toUtc();
+  final today = DateTime.utc(now.year, now.month, now.day);
+  final startDate = today.subtract(Duration(days: window.days - 1));
+  final endDate = today.add(const Duration(days: 1));
+
+  // Use repository provider (no direct Supabase calls)
+  final repository = ref.watch(reportingRepositoryProvider);
+  final result = await repository.fetchAgentPerformanceReportPage(
+    startDate: startDate,
+    endDate: endDate,
+    limit: 100, // First page only for now
+  );
   if (result.isErr) {
     throw result.error;
   }
-  return result.data;
+  return result.data.items; // Return items from paginated result
 });
 
 class AgentPerformanceReportWidget extends ConsumerWidget {

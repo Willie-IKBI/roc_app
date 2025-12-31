@@ -48,7 +48,7 @@ final class TechniciansProvider
   }
 }
 
-String _$techniciansHash() => r'001ebe6df58a1848fe310271d631b89ad32c52de';
+String _$techniciansHash() => r'99fa2a43f00ca07f0e3fa411d97d5caeca3b3aeb';
 
 @ProviderFor(technicianAssignments)
 const technicianAssignmentsProvider = TechnicianAssignmentsFamily._();
@@ -106,7 +106,7 @@ final class TechnicianAssignmentsProvider
 }
 
 String _$technicianAssignmentsHash() =>
-    r'2f4b7e65ee6e2f541066ddc34af683ff7d2da58f';
+    r'3278d8bdcbccaad3124e243b5867621bbc8edc41';
 
 final class TechnicianAssignmentsFamily extends $Family
     with $FunctionalFamilyOverride<FutureOr<Map<String, int>>, DateTime> {
@@ -189,7 +189,7 @@ final class TechnicianAvailabilityProvider
 }
 
 String _$technicianAvailabilityHash() =>
-    r'866928163f774188f3fd03a9ae2dd557ca3da0b9';
+    r'ea96e3855bcc91cd7c5f9c32e3cf737127f065dd';
 
 final class TechnicianAvailabilityFamily extends $Family
     with

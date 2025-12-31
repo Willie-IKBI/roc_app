@@ -601,7 +601,7 @@ class _FocusClaimTile extends StatelessWidget {
                           text: claim.claimNumber,
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w600,
-                          )?.monospace(),
+                          ).monospace(),
                         ),
                         TextSpan(
                           text: ' • ${claim.clientFullName}',
@@ -864,7 +864,7 @@ class _TimelineTile extends StatelessWidget {
                       claim.claimNumber,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
-                      )?.monospace(),
+                      ).monospace(),
                     ),
                     const SizedBox(width: 8),
                     Text(

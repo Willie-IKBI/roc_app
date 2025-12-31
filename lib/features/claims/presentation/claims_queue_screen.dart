@@ -327,7 +327,7 @@ class _ClaimCard extends StatelessWidget {
                     claim.claimNumber,
                     style: theme.textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.w700)
-                        ?.monospace(),
+                        .monospace(),
                   ),
                   GlassBadge.custom(
                     label: claim.status.label,

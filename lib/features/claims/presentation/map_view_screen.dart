@@ -11,6 +11,7 @@ import '../../../core/widgets/glass_dialog.dart';
 import '../../../core/widgets/glass_button.dart';
 import '../../../core/widgets/glass_input.dart';
 import '../../../core/widgets/error_boundary.dart';
+import '../../../domain/models/claim_map_marker.dart';
 import '../../../domain/value_objects/claim_enums.dart';
 import '../../claims/controller/map_view_controller.dart';
 import '../../claims/controller/technician_controller.dart';

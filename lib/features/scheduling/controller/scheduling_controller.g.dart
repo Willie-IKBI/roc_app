@@ -26,7 +26,7 @@ final class DayScheduleProvider
   /// Fetches all appointments for a specific date, grouped by technician.
   const DayScheduleProvider._({
     required DayScheduleFamily super.from,
-    required DateTime super.argument,
+    required ({DateTime date, String? technicianId}) super.argument,
   }) : super(
          retry: null,
          name: r'dayScheduleProvider',
@@ -42,7 +42,7 @@ final class DayScheduleProvider
   String toString() {
     return r'dayScheduleProvider'
         ''
-        '($argument)';
+        '$argument';
   }
 
   @$internal
@@ -53,8 +53,12 @@ final class DayScheduleProvider
 
   @override
   FutureOr<DaySchedule> create(Ref ref) {
-    final argument = this.argument as DateTime;
-    return daySchedule(ref, date: argument);
+    final argument = this.argument as ({DateTime date, String? technicianId});
+    return daySchedule(
+      ref,
+      date: argument.date,
+      technicianId: argument.technicianId,
+    );
   }
 
   @override
@@ -68,12 +72,16 @@ final class DayScheduleProvider
   }
 }
 
-String _$dayScheduleHash() => r'b45a3b50e348f292b463b5aa8be1a06e37f10ca0';
+String _$dayScheduleHash() => r'02650ee4f0f47d9ea45071945a7016ecb029eed5';
 
 /// Fetches all appointments for a specific date, grouped by technician.
 
 final class DayScheduleFamily extends $Family
-    with $FunctionalFamilyOverride<FutureOr<DaySchedule>, DateTime> {
+    with
+        $FunctionalFamilyOverride<
+          FutureOr<DaySchedule>,
+          ({DateTime date, String? technicianId})
+        > {
   const DayScheduleFamily._()
     : super(
         retry: null,
@@ -85,8 +93,11 @@ final class DayScheduleFamily extends $Family
 
   /// Fetches all appointments for a specific date, grouped by technician.
 
-  DayScheduleProvider call({required DateTime date}) =>
-      DayScheduleProvider._(argument: date, from: this);
+  DayScheduleProvider call({required DateTime date, String? technicianId}) =>
+      DayScheduleProvider._(
+        argument: (date: date, technicianId: technicianId),
+        from: this,
+      );
 
   @override
   String toString() => r'dayScheduleProvider';

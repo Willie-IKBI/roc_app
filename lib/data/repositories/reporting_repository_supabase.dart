@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/utils/result.dart';
 import '../../domain/models/daily_claim_report.dart';
+import '../../domain/models/paginated_result.dart';
 import '../../domain/models/report_models.dart';
 import '../../domain/repositories/reporting_repository.dart';
 import '../clients/supabase_client.dart';
@@ -21,12 +22,14 @@ class ReportingRepositorySupabase implements ReportingRepository {
 
   @override
   Future<Result<List<DailyClaimReport>>> fetchDailyReports({
-    DateTime? startDate,
-    DateTime? endDate,
+    required DateTime startDate,
+    required DateTime endDate,
+    int limit = 90,
   }) async {
     final result = await _remote.fetchDailyReports(
       startDate: startDate,
       endDate: endDate,
+      limit: limit,
     );
 
     if (result.isErr) {
@@ -39,91 +42,133 @@ class ReportingRepositorySupabase implements ReportingRepository {
   }
 
   @override
-  Future<Result<List<AgentPerformanceReport>>> fetchAgentPerformanceReport() async {
-    final result = await _remote.fetchAgentPerformanceReport();
-    if (result.isErr) {
-      return Result.err(result.error);
-    }
-    return Result.ok(
-      result.data.map((row) => row.toDomain()).toList(growable: false),
-    );
-  }
-
-  @override
-  Future<Result<List<StatusDistributionReport>>> fetchStatusDistributionReport() async {
-    final result = await _remote.fetchStatusDistributionReport();
-    if (result.isErr) {
-      return Result.err(result.error);
-    }
-    return Result.ok(
-      result.data.map((row) => row.toDomain()).toList(growable: false),
-    );
-  }
-
-  @override
-  Future<Result<List<DamageCauseReport>>> fetchDamageCauseReport() async {
-    final result = await _remote.fetchDamageCauseReport();
-    if (result.isErr) {
-      return Result.err(result.error);
-    }
-    return Result.ok(
-      result.data.map((row) => row.toDomain()).toList(growable: false),
-    );
-  }
-
-  @override
-  Future<Result<List<GeographicReport>>> fetchGeographicReport({
-    String? groupBy,
+  Future<Result<PaginatedResult<AgentPerformanceReport>>> fetchAgentPerformanceReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
   }) async {
-    final result = await _remote.fetchGeographicReport(groupBy: groupBy);
+    final result = await _remote.fetchAgentPerformanceReportPage(
+      startDate: startDate,
+      endDate: endDate,
+      cursor: cursor,
+      limit: limit,
+    );
     if (result.isErr) {
       return Result.err(result.error);
     }
     return Result.ok(
-      result.data.map((row) => row.toDomain()).toList(growable: false),
+      PaginatedResult(
+        items: result.data.items.map((row) => row.toDomain()).toList(growable: false),
+        nextCursor: result.data.nextCursor,
+        hasMore: result.data.hasMore,
+      ),
     );
   }
 
   @override
-  Future<Result<List<InsurerPerformanceReport>>> fetchInsurerPerformanceReport() async {
-    // Fetch main report
-    final mainResult = await _remote.fetchInsurerPerformanceReport();
-    if (mainResult.isErr) {
-      return Result.err(mainResult.error);
+  Future<Result<PaginatedResult<StatusDistributionReport>>> fetchStatusDistributionReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
+    final result = await _remote.fetchStatusDistributionReportPage(
+      startDate: startDate,
+      endDate: endDate,
+      cursor: cursor,
+      limit: limit,
+    );
+    if (result.isErr) {
+      return Result.err(result.error);
     }
+    return Result.ok(
+      PaginatedResult(
+        items: result.data.items.map((row) => row.toDomain()).toList(growable: false),
+        nextCursor: result.data.nextCursor,
+        hasMore: result.data.hasMore,
+      ),
+    );
+  }
 
-    // Fetch breakdowns
-    final damageCauseResult = await _remote.fetchInsurerDamageCauseBreakdown();
-    final statusResult = await _remote.fetchInsurerStatusBreakdown();
-
-    final damageCauseBreakdown = damageCauseResult.isOk
-        ? damageCauseResult.data.map((row) => row.toDomain()).toList()
-        : <InsurerDamageCauseBreakdown>[];
-
-    final statusBreakdown = statusResult.isOk
-        ? statusResult.data.map((row) => row.toDomain()).toList()
-        : <InsurerStatusBreakdown>[];
-
-    // Group breakdowns by insurer ID
-    final damageCauseByInsurer = <String, List<InsurerDamageCauseBreakdown>>{};
-    for (final breakdown in damageCauseBreakdown) {
-      damageCauseByInsurer.putIfAbsent(breakdown.insurerId, () => []).add(breakdown);
+  @override
+  Future<Result<PaginatedResult<DamageCauseReport>>> fetchDamageCauseReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
+    final result = await _remote.fetchDamageCauseReportPage(
+      startDate: startDate,
+      endDate: endDate,
+      cursor: cursor,
+      limit: limit,
+    );
+    if (result.isErr) {
+      return Result.err(result.error);
     }
+    return Result.ok(
+      PaginatedResult(
+        items: result.data.items.map((row) => row.toDomain()).toList(growable: false),
+        nextCursor: result.data.nextCursor,
+        hasMore: result.data.hasMore,
+      ),
+    );
+  }
 
-    final statusByInsurer = <String, List<InsurerStatusBreakdown>>{};
-    for (final breakdown in statusBreakdown) {
-      statusByInsurer.putIfAbsent(breakdown.insurerId, () => []).add(breakdown);
+  @override
+  Future<Result<PaginatedResult<GeographicReport>>> fetchGeographicReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? groupBy,
+    String? cursor,
+    int limit = 100,
+  }) async {
+    final result = await _remote.fetchGeographicReportPage(
+      startDate: startDate,
+      endDate: endDate,
+      groupBy: groupBy,
+      cursor: cursor,
+      limit: limit,
+    );
+    if (result.isErr) {
+      return Result.err(result.error);
     }
+    return Result.ok(
+      PaginatedResult(
+        items: result.data.items.map((row) => row.toDomain()).toList(growable: false),
+        nextCursor: result.data.nextCursor,
+        hasMore: result.data.hasMore,
+      ),
+    );
+  }
 
-    // Combine main report with breakdowns
-    final reports = mainResult.data.map((row) {
-      return row.toDomain(
-        damageCauseBreakdown: damageCauseByInsurer[row.insurerId] ?? [],
-        statusBreakdown: statusByInsurer[row.insurerId] ?? [],
-      );
-    }).toList(growable: false);
-
-    return Result.ok(reports);
+  @override
+  Future<Result<PaginatedResult<InsurerPerformanceReport>>> fetchInsurerPerformanceReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
+    final result = await _remote.fetchInsurerPerformanceReportPage(
+      startDate: startDate,
+      endDate: endDate,
+      cursor: cursor,
+      limit: limit,
+    );
+    if (result.isErr) {
+      return Result.err(result.error);
+    }
+    
+    // Note: Breakdowns are not included in paginated results
+    // They would need separate paginated methods if needed
+    return Result.ok(
+      PaginatedResult(
+        items: result.data.items.map((row) => row.toDomain()).toList(growable: false),
+        nextCursor: result.data.nextCursor,
+        hasMore: result.data.hasMore,
+      ),
+    );
   }
 }
 

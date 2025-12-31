@@ -3,6 +3,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/clients/supabase_client.dart';
+import '../../data/repositories/user_admin_repository_supabase.dart';
 import '../../domain/models/profile.dart';
 
 part 'current_user_provider.g.dart';
@@ -65,76 +66,36 @@ Future<Profile?> currentUser(Ref ref) async {
     return null;
   }
 
-  try {
-    final data = await client
-        .from('profiles')
-        .select('id, full_name, phone, role, is_active, tenant_id')
-        .eq('id', user.id)
-        .maybeSingle();
+  // Fetch profile using repository (no direct Supabase calls)
+  final repository = ref.watch(userAdminRepositoryProvider);
+  final result = await repository.fetchUserById(user.id);
 
-    if (data == null) {
-      // Profile doesn't exist, return default profile
-      return Profile(
-        id: user.id,
-        email: user.email ?? '',
-        fullName: user.email ?? '',
-        phone: null,
-        role: 'agent',
-        isActive: true,
-        tenantId: '',
-      );
-    }
-
-    final map = Map<String, dynamic>.from(data as Map);
-    final isActive = (map['is_active'] as bool?) ?? true;
-    if (!isActive) {
-      return Profile(
-        id: user.id,
-        email: user.email ?? '',
-        fullName: (map['full_name'] as String?)?.trim() ?? '',
-        phone: (map['phone'] as String?)?.trim(),
-        role: (map['role'] as String?) ?? 'agent',
-        isActive: false,
-        tenantId: (map['tenant_id'] as String?) ?? '',
-      );
-    }
-
-    return Profile(
-      id: user.id,
-      email: user.email ?? '',
-      fullName: (map['full_name'] as String?)?.trim() ?? '',
-      phone: (map['phone'] as String?)?.trim(),
-      role: (map['role'] as String?) ?? 'agent',
-      isActive: true,
-      tenantId: (map['tenant_id'] as String?) ?? '',
-    );
-  } catch (e, stackTrace) {
-    // Handle database/network errors gracefully
+  if (result.isErr) {
+    // Propagate error as AsyncError (no silent failure)
     developer.log(
-      'Error fetching user profile: $e',
+      'Error fetching user profile: ${result.error}',
       name: 'CurrentUser',
-      error: e,
-      stackTrace: stackTrace,
+      error: result.error,
     );
-    
-    // Log more details for debugging
-    developer.log(
-      'Auth user ID: ${user.id}, Email: ${user.email}',
-      name: 'CurrentUser',
-    );
-    
-    // Return a default profile based on auth user to prevent app crash
-    // This allows the app to continue functioning even if profile fetch fails
-    // The user will be able to access the app but may need to complete their profile
-    return Profile(
-      id: user.id,
-      email: user.email ?? '',
-      fullName: user.email ?? '',
-      phone: null,
-      role: 'agent',
-      isActive: true,
-      tenantId: '',
-    );
+    throw result.error;
   }
+
+  final profile = result.data;
+  
+  // If profile not found, return null (preserve existing behavior for not-logged-in case)
+  if (profile == null) {
+    return null;
+  }
+
+  // Ensure email is populated from auth user if missing in profile
+  return Profile(
+    id: profile.id,
+    email: user.email ?? profile.email,
+    fullName: profile.fullName,
+    phone: profile.phone,
+    role: profile.role,
+    isActive: profile.isActive,
+    tenantId: profile.tenantId,
+  );
 }
 

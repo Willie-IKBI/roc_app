@@ -58,7 +58,7 @@ final class AgentNameProvider
   }
 }
 
-String _$agentNameHash() => r'9fc8783b9f343a4c921d0462b06fa0e1cc63a754';
+String _$agentNameHash() => r'1b21154e419705b30a79a1dbfc1958d3255e8572';
 
 final class AgentNameFamily extends $Family
     with $FunctionalFamilyOverride<FutureOr<String?>, String?> {

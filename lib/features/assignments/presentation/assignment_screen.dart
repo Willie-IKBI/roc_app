@@ -87,6 +87,19 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
       _dateFrom = null;
       _dateTo = null;
     });
+    ref.read(assignableJobsControllerProvider(
+      statusFilter: null,
+      assignedFilter: null,
+      technicianIdFilter: null,
+      dateFrom: null,
+      dateTo: null,
+    ).notifier).updateFilters(
+      statusFilter: null,
+      assignedFilter: null,
+      technicianIdFilter: null,
+      dateFrom: null,
+      dateTo: null,
+    );
   }
 
   Future<void> _showAssignmentDialog(ClaimSummary claimSummary) async {
@@ -118,14 +131,20 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
 
     if (result == true && mounted) {
       // Refresh the list
-      ref.invalidate(assignableJobsProvider);
+      ref.read(assignableJobsControllerProvider(
+        statusFilter: _statusFilter,
+        assignedFilter: _assignedFilter,
+        technicianIdFilter: _technicianFilter,
+        dateFrom: _dateFrom,
+        dateTo: _dateTo,
+      ).notifier).refresh();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final jobsAsync = ref.watch(assignableJobsProvider(
+    final jobsStateAsync = ref.watch(assignableJobsControllerProvider(
       statusFilter: _statusFilter,
       assignedFilter: _assignedFilter,
       technicianIdFilter: _technicianFilter,
@@ -167,17 +186,92 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
               dateFrom: _dateFrom,
               dateTo: _dateTo,
               techniciansAsync: techniciansAsync,
-              onStatusChanged: (status) => setState(() => _statusFilter = status),
-              onAssignedChanged: (assigned) => setState(() => _assignedFilter = assigned),
-              onTechnicianChanged: (technicianId) => setState(() => _technicianFilter = technicianId),
-              onDateFromChanged: (date) => setState(() => _dateFrom = date),
-              onDateToChanged: (date) => setState(() => _dateTo = date),
+              onStatusChanged: (status) {
+                setState(() => _statusFilter = status);
+                ref.read(assignableJobsControllerProvider(
+                  statusFilter: status,
+                  assignedFilter: _assignedFilter,
+                  technicianIdFilter: _technicianFilter,
+                  dateFrom: _dateFrom,
+                  dateTo: _dateTo,
+                ).notifier).updateFilters(
+                  statusFilter: status,
+                  assignedFilter: _assignedFilter,
+                  technicianIdFilter: _technicianFilter,
+                  dateFrom: _dateFrom,
+                  dateTo: _dateTo,
+                );
+              },
+              onAssignedChanged: (assigned) {
+                setState(() => _assignedFilter = assigned);
+                ref.read(assignableJobsControllerProvider(
+                  statusFilter: _statusFilter,
+                  assignedFilter: assigned,
+                  technicianIdFilter: _technicianFilter,
+                  dateFrom: _dateFrom,
+                  dateTo: _dateTo,
+                ).notifier).updateFilters(
+                  statusFilter: _statusFilter,
+                  assignedFilter: assigned,
+                  technicianIdFilter: _technicianFilter,
+                  dateFrom: _dateFrom,
+                  dateTo: _dateTo,
+                );
+              },
+              onTechnicianChanged: (technicianId) {
+                setState(() => _technicianFilter = technicianId);
+                ref.read(assignableJobsControllerProvider(
+                  statusFilter: _statusFilter,
+                  assignedFilter: _assignedFilter,
+                  technicianIdFilter: technicianId,
+                  dateFrom: _dateFrom,
+                  dateTo: _dateTo,
+                ).notifier).updateFilters(
+                  statusFilter: _statusFilter,
+                  assignedFilter: _assignedFilter,
+                  technicianIdFilter: technicianId,
+                  dateFrom: _dateFrom,
+                  dateTo: _dateTo,
+                );
+              },
+              onDateFromChanged: (date) {
+                setState(() => _dateFrom = date);
+                ref.read(assignableJobsControllerProvider(
+                  statusFilter: _statusFilter,
+                  assignedFilter: _assignedFilter,
+                  technicianIdFilter: _technicianFilter,
+                  dateFrom: date,
+                  dateTo: _dateTo,
+                ).notifier).updateFilters(
+                  statusFilter: _statusFilter,
+                  assignedFilter: _assignedFilter,
+                  technicianIdFilter: _technicianFilter,
+                  dateFrom: date,
+                  dateTo: _dateTo,
+                );
+              },
+              onDateToChanged: (date) {
+                setState(() => _dateTo = date);
+                ref.read(assignableJobsControllerProvider(
+                  statusFilter: _statusFilter,
+                  assignedFilter: _assignedFilter,
+                  technicianIdFilter: _technicianFilter,
+                  dateFrom: _dateFrom,
+                  dateTo: date,
+                ).notifier).updateFilters(
+                  statusFilter: _statusFilter,
+                  assignedFilter: _assignedFilter,
+                  technicianIdFilter: _technicianFilter,
+                  dateFrom: _dateFrom,
+                  dateTo: date,
+                );
+              },
               onClearFilters: _clearFilters,
             ),
             
             // Summary cards
-            jobsAsync.when(
-              data: (jobs) => _SummaryCards(jobs: jobs),
+            jobsStateAsync.when(
+              data: (state) => _SummaryCards(jobs: state.items),
               loading: () => const SizedBox(
                 height: 100,
                 child: Center(child: CircularProgressIndicator()),
@@ -189,9 +283,9 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
             
             // Job list
             Expanded(
-              child: jobsAsync.when(
-                data: (jobs) {
-                  if (jobs.isEmpty) {
+              child: jobsStateAsync.when(
+                data: (state) {
+                  if (state.items.isEmpty && !state.isLoading) {
                     return const GlassEmptyState(
                       icon: Icons.assignment_outlined,
                       title: 'No jobs found',
@@ -201,7 +295,13 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
 
                   return RefreshIndicator(
                     onRefresh: () async {
-                      ref.invalidate(assignableJobsProvider);
+                      await ref.read(assignableJobsControllerProvider(
+                        statusFilter: _statusFilter,
+                        assignedFilter: _assignedFilter,
+                        technicianIdFilter: _technicianFilter,
+                        dateFrom: _dateFrom,
+                        dateTo: _dateTo,
+                      ).notifier).refresh();
                     },
                     child: Consumer(
                       builder: (context, ref, child) {
@@ -213,25 +313,39 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
                         
                         return ListView.builder(
                           padding: const EdgeInsets.all(DesignTokens.spaceM),
-                          itemCount: jobs.length,
+                          itemCount: state.items.length + (state.hasMore ? 1 : 0),
                           itemBuilder: (context, index) {
-                            final job = jobs[index];
-                            return FutureBuilder<Claim?>(
-                              future: ref.read(claimRepositoryProvider).fetchById(job.claimId).then((r) => r.isOk ? r.data : null),
-                              builder: (context, snapshot) {
-                                final claim = snapshot.data;
-                                final technicianName = claim?.technicianId != null 
-                                    ? techniciansMap[claim!.technicianId] 
-                                    : null;
-                                return JobAssignmentCard(
-                                  claim: job,
-                                  technicianName: technicianName,
-                                  appointmentDate: claim?.appointmentDate,
-                                  appointmentTime: claim?.appointmentTime,
-                                  onAssign: () => _showAssignmentDialog(job),
-                                  onReassign: () => _showAssignmentDialog(job),
-                                );
-                              },
+                            // Load more trigger
+                            if (index == state.items.length) {
+                              // Trigger load more when near bottom
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                ref.read(assignableJobsControllerProvider(
+                                  statusFilter: _statusFilter,
+                                  assignedFilter: _assignedFilter,
+                                  technicianIdFilter: _technicianFilter,
+                                  dateFrom: _dateFrom,
+                                  dateTo: _dateTo,
+                                ).notifier).loadNextPage();
+                              });
+                              return state.isLoadingMore
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(DesignTokens.spaceM),
+                                      child: Center(child: CircularProgressIndicator()),
+                                    )
+                                  : const SizedBox.shrink();
+                            }
+
+                            final job = state.items[index];
+                            // Note: v_claims_list may not have appointment_date/appointment_time
+                            // For now, we'll fetch only when dialog opens (not for each card)
+                            // This eliminates N+1 queries for the list view
+                            return JobAssignmentCard(
+                              claim: job,
+                              technicianName: null, // Will be shown in dialog if needed
+                              appointmentDate: null, // Will be fetched in dialog if needed
+                              appointmentTime: null, // Will be fetched in dialog if needed
+                              onAssign: () => _showAssignmentDialog(job),
+                              onReassign: () => _showAssignmentDialog(job),
                             );
                           },
                         );
@@ -244,7 +358,13 @@ class _AssignmentScreenState extends ConsumerState<AssignmentScreen> {
                   title: 'Failed to load jobs',
                   message: error.toString(),
                   onRetry: () {
-                    ref.invalidate(assignableJobsProvider);
+                    ref.read(assignableJobsControllerProvider(
+                      statusFilter: _statusFilter,
+                      assignedFilter: _assignedFilter,
+                      technicianIdFilter: _technicianFilter,
+                      dateFrom: _dateFrom,
+                      dateTo: _dateTo,
+                    ).notifier).refresh();
                   },
                 ),
               ),

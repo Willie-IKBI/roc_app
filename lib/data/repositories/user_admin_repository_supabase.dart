@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/utils/result.dart';
+import '../../domain/models/profile.dart';
 import '../../domain/models/user_account.dart';
 import '../../domain/repositories/user_admin_repository.dart';
 import '../../domain/value_objects/role_type.dart';
@@ -18,8 +19,8 @@ class UserAdminRepositorySupabase implements UserAdminRepository {
   final UserAdminRemoteDataSource _remote;
 
   @override
-  Future<Result<List<UserAccount>>> fetchUsers() async {
-    final response = await _remote.fetchUsers();
+  Future<Result<List<UserAccount>>> fetchUsers({int limit = 200}) async {
+    final response = await _remote.fetchUsers(limit: limit);
     if (response.isErr) {
       return Result.err(response.error);
     }
@@ -27,12 +28,40 @@ class UserAdminRepositorySupabase implements UserAdminRepository {
   }
 
   @override
-  Future<Result<List<UserAccount>>> fetchTechnicians() async {
-    final response = await _remote.fetchTechnicians();
+  Future<Result<List<UserAccount>>> fetchTechnicians({
+    int limit = 200,
+  }) async {
+    final response = await _remote.fetchTechnicians(limit: limit);
     if (response.isErr) {
       return Result.err(response.error);
     }
     return Result.ok(response.data.map((row) => row.toDomain()).toList());
+  }
+
+  @override
+  Future<Result<Profile?>> fetchUserById(String userId) async {
+    final response = await _remote.fetchUserById(userId);
+    if (response.isErr) {
+      return Result.err(response.error);
+    }
+
+    final row = response.data;
+    if (row == null) {
+      return const Result.ok(null);
+    }
+
+    // Map ProfileRow to Profile domain model
+    return Result.ok(
+      Profile(
+        id: row.id,
+        email: row.email,
+        fullName: row.fullName,
+        phone: row.phone,
+        role: row.role,
+        isActive: row.isActive,
+        tenantId: row.tenantId,
+      ),
+    );
   }
 
   @override

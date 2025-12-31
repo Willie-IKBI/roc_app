@@ -2,7 +2,9 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show PostgrestException, SupabaseClient;
 
 import '../../core/errors/domain_error.dart';
+import '../../core/logging/logger.dart';
 import '../../core/utils/result.dart';
+import '../../domain/models/paginated_result.dart';
 import '../clients/supabase_client.dart';
 import '../models/daily_claim_report_row.dart';
 import '../models/report_row_models.dart';
@@ -15,22 +17,24 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
   @override
   Future<Result<List<DailyClaimReportRow>>> fetchDailyReports({
-    DateTime? startDate,
-    DateTime? endDate,
+    required DateTime startDate,
+    required DateTime endDate,
+    int limit = 90,
   }) async {
     try {
+      // Validate and enforce limit
+      final pageSize = limit.clamp(1, 365);
+
       var query = _client.from('v_claims_reporting').select(
         'claim_date, claims_captured, avg_minutes_to_first_contact, compliant_claims, contacted_claims',
       );
 
-      if (startDate != null) {
-        query = query.gte('claim_date', startDate.toIso8601String());
-      }
-      if (endDate != null) {
-        query = query.lte('claim_date', endDate.toIso8601String());
-      }
+      // Date range is required
+      query = query
+          .gte('claim_date', startDate.toIso8601String())
+          .lte('claim_date', endDate.toIso8601String());
 
-      final response = await query.order('claim_date', ascending: false).limit(90);
+      final response = await query.order('claim_date', ascending: false).limit(pageSize);
 
       final rows = (response as List<dynamic>)
           .map(
@@ -40,48 +44,126 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
           )
           .toList(growable: false);
 
+      // Warn if limit reached
+      if (rows.length >= pageSize) {
+        AppLogger.warn(
+          'fetchDailyReports() returned $pageSize results (limit reached). Some days may not be included.',
+          name: 'SupabaseReportingRemoteDataSource',
+        );
+      }
+
       return Result.ok(rows);
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch daily reports',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching daily reports',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
   @override
-  Future<Result<List<AgentPerformanceReportRow>>> fetchAgentPerformanceReport() async {
+  Future<Result<PaginatedResult<AgentPerformanceReportRow>>> fetchAgentPerformanceReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
     try {
-      final response = await _client.rpc('get_agent_performance_report').select();
-      final rows = (response as List<dynamic>)
-          .map(
-            (row) => AgentPerformanceReportRow.fromJson(
-              Map<String, dynamic>.from(row as Map),
-            ),
-          )
-          .toList(growable: false);
-      return Result.ok(rows);
-    } on PostgrestException catch (err) {
-      // If RPC doesn't exist, fall back to direct query
-      return _fetchAgentPerformanceDirect();
-    } catch (err) {
+      // Try RPC first (if it exists and supports date range)
+      try {
+        final response = await _client.rpc('get_agent_performance_report').select();
+        final rows = (response as List<dynamic>)
+            .map(
+              (row) => AgentPerformanceReportRow.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList(growable: false);
+        // RPC doesn't support pagination, return all results
+        return Result.ok(PaginatedResult(
+          items: rows,
+          nextCursor: null,
+          hasMore: false,
+        ));
+      } on PostgrestException catch (_) {
+        // RPC doesn't exist, fall back to paginated direct query
+      }
+
+      return _fetchAgentPerformanceDirectPage(
+        startDate: startDate,
+        endDate: endDate,
+        cursor: cursor,
+        limit: limit,
+      );
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching agent performance report',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
-  Future<Result<List<AgentPerformanceReportRow>>> _fetchAgentPerformanceDirect() async {
+  Future<Result<PaginatedResult<AgentPerformanceReportRow>>> _fetchAgentPerformanceDirectPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
     try {
-      // Fetch claims with agent info
-      final claimsResponse = await _client
+      // Validate and enforce limit
+      final pageSize = limit.clamp(1, 500);
+      final startDateStr = startDate.toIso8601String();
+      final endDateStr = endDate.toIso8601String();
+
+      // Fetch claims with agent info (paginated)
+      var query = _client
           .from('claims')
           .select('id, agent_id, sla_started_at, status, closed_at')
           .not('agent_id', 'is', null)
-          .limit(10000);
+          .gte('created_at', startDateStr)  // Date range required
+          .lte('created_at', endDateStr);    // Date range required
 
-      // Fetch profiles for agent names
+      // Apply cursor for pagination
+      if (cursor != null && cursor.isNotEmpty) {
+        query = query.gt('id', cursor);
+      }
+
+      // Fetch limit + 1 to detect if more data exists
+      final claimsResponse = await query
+          .order('id', ascending: true)
+          .limit(pageSize + 1);
+
+      // Check if we have more data
+      final hasMore = (claimsResponse as List<dynamic>).length > pageSize;
+      final claims = hasMore
+          ? (claimsResponse as List<dynamic>).take(pageSize).toList()
+          : (claimsResponse as List<dynamic>);
+
+      // Generate next cursor from last claim
+      String? nextCursor;
+      if (hasMore && claims.isNotEmpty) {
+        final lastClaim = claims.last as Map<String, dynamic>;
+        nextCursor = lastClaim['id'] as String;
+      }
+
+      // Fetch profiles for agent names (bounded query)
       final profilesResponse = await _client
           .from('profiles')
           .select('id, full_name')
-          .limit(1000);
+          .limit(1000);  // Reasonable limit for profiles
 
       final profilesMap = <String, String>{};
       for (final profile in profilesResponse as List<dynamic>) {
@@ -90,16 +172,43 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         profilesMap[id] = name;
       }
 
-      // Fetch first contact attempts
+      // Fetch first contact attempts for these claims (bounded by claim IDs)
+      final claimIds = claims.map((c) => (c as Map<String, dynamic>)['id'] as String).toList();
+      if (claimIds.isEmpty) {
+        return Result.ok(PaginatedResult(
+          items: [],
+          nextCursor: null,
+          hasMore: false,
+        ));
+      }
+
+      // Enforce claimIds length cannot exceed report page size (max 500)
+      if (claimIds.length > pageSize) {
+        AppLogger.warn(
+          'claimIds length (${claimIds.length}) exceeds pageSize ($pageSize). Truncating to pageSize.',
+          name: 'SupabaseReportingRemoteDataSource',
+        );
+        claimIds.removeRange(pageSize, claimIds.length);
+      }
+
+      // Fetch contact attempts for this page of claims (bounded by claimIds)
+      // Use IN filter to only fetch attempts for claims in this page
+      // Conservative cap: claimIds.length * 20 (max 20 attempts per claim)
+      // This is justified as we need all attempts to find the first contact per claim
+      final maxAttempts = claimIds.length * 20;
       final contactAttemptsResponse = await _client
           .from('contact_attempts')
-          .select('claim_id, attempted_at, outcome')
+          .select('claim_id, attempted_at, outcome, id')
+          .inFilter('claim_id', claimIds)
           .order('attempted_at', ascending: true)
-          .limit(10000);
+          .order('id', ascending: true)  // Deterministic ordering
+          .limit(maxAttempts);
+      
+      final filteredAttempts = contactAttemptsResponse as List<dynamic>;
 
       // Group contact attempts by claim to find first contact
       final firstContactMap = <String, Map<String, dynamic>>{};
-      for (final attempt in contactAttemptsResponse as List<dynamic>) {
+      for (final attempt in filteredAttempts) {
         final claimId = attempt['claim_id'] as String;
         if (!firstContactMap.containsKey(claimId)) {
           firstContactMap[claimId] = attempt as Map<String, dynamic>;
@@ -108,15 +217,15 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
       // Aggregate by agent
       final agentMap = <String, AgentPerformanceData>{};
-      final now = DateTime.now().toUtc();
 
-      for (final claim in claimsResponse as List<dynamic>) {
-        final agentId = claim['agent_id'] as String;
-        final claimId = claim['id'] as String;
-        final slaStartedAt = DateTime.parse(claim['sla_started_at'] as String);
-        final status = claim['status'] as String;
-        final closedAt = claim['closed_at'] != null
-            ? DateTime.parse(claim['closed_at'] as String)
+      for (final claim in claims) {
+        final claimMap = claim as Map<String, dynamic>;
+        final agentId = claimMap['agent_id'] as String;
+        final claimId = claimMap['id'] as String;
+        final slaStartedAt = DateTime.parse(claimMap['sla_started_at'] as String);
+        final status = claimMap['status'] as String;
+        final closedAt = claimMap['closed_at'] != null
+            ? DateTime.parse(claimMap['closed_at'] as String)
             : null;
 
         final data = agentMap.putIfAbsent(
@@ -177,50 +286,134 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         );
       }).toList(growable: false);
 
-      return Result.ok(rows);
+      // Warn if limit reached
+      if (hasMore) {
+        AppLogger.warn(
+          'fetchAgentPerformanceReportPage() returned $pageSize claims (limit reached). More data available.',
+          name: 'SupabaseReportingRemoteDataSource',
+        );
+      }
+
+      return Result.ok(PaginatedResult(
+        items: rows,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+      ));
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch agent performance report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching agent performance report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
   @override
-  Future<Result<List<StatusDistributionReportRow>>> fetchStatusDistributionReport() async {
+  Future<Result<PaginatedResult<StatusDistributionReportRow>>> fetchStatusDistributionReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
     try {
-      final response = await _client.rpc('get_status_distribution_report').select();
-      final rows = (response as List<dynamic>)
-          .map(
-            (row) => StatusDistributionReportRow.fromJson(
-              Map<String, dynamic>.from(row as Map),
-            ),
-          )
-          .toList(growable: false);
-      return Result.ok(rows);
-    } on PostgrestException catch (err) {
-      return _fetchStatusDistributionDirect();
-    } catch (err) {
+      // Try RPC first (if it exists and supports date range)
+      try {
+        final response = await _client.rpc('get_status_distribution_report').select();
+        final rows = (response as List<dynamic>)
+            .map(
+              (row) => StatusDistributionReportRow.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList(growable: false);
+        // RPC doesn't support pagination, return all results
+        return Result.ok(PaginatedResult(
+          items: rows,
+          nextCursor: null,
+          hasMore: false,
+        ));
+      } on PostgrestException catch (_) {
+        // RPC doesn't exist, fall back to paginated direct query
+      }
+
+      return _fetchStatusDistributionDirectPage(
+        startDate: startDate,
+        endDate: endDate,
+        cursor: cursor,
+        limit: limit,
+      );
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching status distribution report',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
-  Future<Result<List<StatusDistributionReportRow>>> _fetchStatusDistributionDirect() async {
+  Future<Result<PaginatedResult<StatusDistributionReportRow>>> _fetchStatusDistributionDirectPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
     try {
-      // Group by status using PostgREST
-      final response = await _client
-          .from('claims')
-          .select('status, created_at, closed_at')
-          .limit(10000);
+      // Validate and enforce limit
+      final pageSize = limit.clamp(1, 500);
+      final startDateStr = startDate.toIso8601String();
+      final endDateStr = endDate.toIso8601String();
 
-      // Aggregate in Dart for now
+      // Fetch claims (paginated)
+      var query = _client
+          .from('claims')
+          .select('id, status, created_at, closed_at')
+          .gte('created_at', startDateStr)  // Date range required
+          .lte('created_at', endDateStr);    // Date range required
+
+      // Apply cursor for pagination
+      if (cursor != null && cursor.isNotEmpty) {
+        query = query.gt('id', cursor);
+      }
+
+      // Fetch limit + 1 to detect if more data exists
+      final response = await query
+          .order('id', ascending: true)
+          .limit(pageSize + 1);
+
+      // Check if we have more data
+      final hasMore = (response as List<dynamic>).length > pageSize;
+      final claims = hasMore
+          ? (response as List<dynamic>).take(pageSize).toList()
+          : (response as List<dynamic>);
+
+      // Generate next cursor from last claim
+      String? nextCursor;
+      if (hasMore && claims.isNotEmpty) {
+        final lastClaim = claims.last as Map<String, dynamic>;
+        nextCursor = lastClaim['id'] as String;
+      }
+
+      // Aggregate in Dart
       final statusMap = <String, StatusDistributionData>{};
       final now = DateTime.now().toUtc();
 
-      for (final row in response as List<dynamic>) {
-        final status = row['status'] as String;
-        final createdAt = DateTime.parse(row['created_at'] as String);
-        final closedAt = row['closed_at'] != null
-            ? DateTime.parse(row['closed_at'] as String)
+      for (final row in claims) {
+        final claimMap = row as Map<String, dynamic>;
+        final status = claimMap['status'] as String;
+        final createdAt = DateTime.parse(claimMap['created_at'] as String);
+        final closedAt = claimMap['closed_at'] != null
+            ? DateTime.parse(claimMap['closed_at'] as String)
             : null;
 
         final data = statusMap.putIfAbsent(
@@ -247,48 +440,133 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         );
       }).toList(growable: false);
 
-      return Result.ok(rows);
+      // Warn if limit reached
+      if (hasMore) {
+        AppLogger.warn(
+          'fetchStatusDistributionReportPage() returned $pageSize claims (limit reached). More data available.',
+          name: 'SupabaseReportingRemoteDataSource',
+        );
+      }
+
+      return Result.ok(PaginatedResult(
+        items: rows,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+      ));
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch status distribution report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching status distribution report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
   @override
-  Future<Result<List<DamageCauseReportRow>>> fetchDamageCauseReport() async {
+  Future<Result<PaginatedResult<DamageCauseReportRow>>> fetchDamageCauseReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
     try {
-      final response = await _client.rpc('get_damage_cause_report').select();
-      final rows = (response as List<dynamic>)
-          .map(
-            (row) => DamageCauseReportRow.fromJson(
-              Map<String, dynamic>.from(row as Map),
-            ),
-          )
-          .toList(growable: false);
-      return Result.ok(rows);
-    } on PostgrestException catch (err) {
-      return _fetchDamageCauseDirect();
-    } catch (err) {
+      // Try RPC first (if it exists and supports date range)
+      try {
+        final response = await _client.rpc('get_damage_cause_report').select();
+        final rows = (response as List<dynamic>)
+            .map(
+              (row) => DamageCauseReportRow.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList(growable: false);
+        // RPC doesn't support pagination, return all results
+        return Result.ok(PaginatedResult(
+          items: rows,
+          nextCursor: null,
+          hasMore: false,
+        ));
+      } on PostgrestException catch (_) {
+        // RPC doesn't exist, fall back to paginated direct query
+      }
+
+      return _fetchDamageCauseDirectPage(
+        startDate: startDate,
+        endDate: endDate,
+        cursor: cursor,
+        limit: limit,
+      );
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching damage cause report',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
-  Future<Result<List<DamageCauseReportRow>>> _fetchDamageCauseDirect() async {
+  Future<Result<PaginatedResult<DamageCauseReportRow>>> _fetchDamageCauseDirectPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
     try {
-      final response = await _client
+      // Validate and enforce limit
+      final pageSize = limit.clamp(1, 500);
+      final startDateStr = startDate.toIso8601String();
+      final endDateStr = endDate.toIso8601String();
+
+      // Fetch claims (paginated)
+      var query = _client
           .from('claims')
-          .select('damage_cause, created_at, closed_at')
-          .limit(10000);
+          .select('id, damage_cause, created_at, closed_at')
+          .gte('created_at', startDateStr)  // Date range required
+          .lte('created_at', endDateStr);    // Date range required
+
+      // Apply cursor for pagination
+      if (cursor != null && cursor.isNotEmpty) {
+        query = query.gt('id', cursor);
+      }
+
+      // Fetch limit + 1 to detect if more data exists
+      final response = await query
+          .order('id', ascending: true)
+          .limit(pageSize + 1);
+
+      // Check if we have more data
+      final hasMore = (response as List<dynamic>).length > pageSize;
+      final claims = hasMore
+          ? (response as List<dynamic>).take(pageSize).toList()
+          : (response as List<dynamic>);
+
+      // Generate next cursor from last claim
+      String? nextCursor;
+      if (hasMore && claims.isNotEmpty) {
+        final lastClaim = claims.last as Map<String, dynamic>;
+        nextCursor = lastClaim['id'] as String;
+      }
 
       final causeMap = <String, DamageCauseData>{};
       final now = DateTime.now().toUtc();
 
-      for (final row in response as List<dynamic>) {
-        final cause = row['damage_cause'] as String;
-        final createdAt = DateTime.parse(row['created_at'] as String);
-        final closedAt = row['closed_at'] != null
-            ? DateTime.parse(row['closed_at'] as String)
+      for (final row in claims) {
+        final claimMap = row as Map<String, dynamic>;
+        final cause = claimMap['damage_cause'] as String;
+        final createdAt = DateTime.parse(claimMap['created_at'] as String);
+        final closedAt = claimMap['closed_at'] != null
+            ? DateTime.parse(claimMap['closed_at'] as String)
             : null;
 
         final data = causeMap.putIfAbsent(
@@ -311,54 +589,136 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         );
       }).toList(growable: false);
 
-      return Result.ok(rows);
+      // Warn if limit reached
+      if (hasMore) {
+        AppLogger.warn(
+          'fetchDamageCauseReportPage() returned $pageSize claims (limit reached). More data available.',
+          name: 'SupabaseReportingRemoteDataSource',
+        );
+      }
+
+      return Result.ok(PaginatedResult(
+        items: rows,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+      ));
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch damage cause report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching damage cause report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
   @override
-  Future<Result<List<GeographicReportRow>>> fetchGeographicReport({
+  Future<Result<PaginatedResult<GeographicReportRow>>> fetchGeographicReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
     String? groupBy,
+    String? cursor,
+    int limit = 100,
   }) async {
     try {
-      final response = await _client.rpc('get_geographic_report', params: {
-        'group_by': groupBy ?? 'province',
-      }).select();
-      final rows = (response as List<dynamic>)
-          .map(
-            (row) => GeographicReportRow.fromJson(
-              Map<String, dynamic>.from(row as Map),
-            ),
-          )
-          .toList(growable: false);
-      return Result.ok(rows);
-    } on PostgrestException catch (err) {
-      return _fetchGeographicDirect(groupBy: groupBy);
-    } catch (err) {
+      // Try RPC first (if it exists and supports date range)
+      try {
+        final response = await _client.rpc('get_geographic_report', params: {
+          'group_by': groupBy ?? 'province',
+        }).select();
+        final rows = (response as List<dynamic>)
+            .map(
+              (row) => GeographicReportRow.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList(growable: false);
+        // RPC doesn't support pagination, return all results
+        return Result.ok(PaginatedResult(
+          items: rows,
+          nextCursor: null,
+          hasMore: false,
+        ));
+      } on PostgrestException catch (_) {
+        // RPC doesn't exist, fall back to paginated direct query
+      }
+
+      return _fetchGeographicDirectPage(
+        startDate: startDate,
+        endDate: endDate,
+        groupBy: groupBy,
+        cursor: cursor,
+        limit: limit,
+      );
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching geographic report',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
-  Future<Result<List<GeographicReportRow>>> _fetchGeographicDirect({
+  Future<Result<PaginatedResult<GeographicReportRow>>> _fetchGeographicDirectPage({
+    required DateTime startDate,
+    required DateTime endDate,
     String? groupBy,
+    String? cursor,
+    int limit = 100,
   }) async {
     try {
+      // Validate and enforce limit
+      final pageSize = limit.clamp(1, 500);
+      final startDateStr = startDate.toIso8601String();
+      final endDateStr = endDate.toIso8601String();
       final groupByField = groupBy ?? 'province';
-      final response = await _client
+
+      // Fetch claims (paginated)
+      var query = _client
           .from('claims')
           .select('''
             id,
             address:addresses!claims_address_id_fkey(province, city, suburb, lat, lng)
           ''')
-          .limit(10000);
+          .gte('created_at', startDateStr)  // Date range required
+          .lte('created_at', endDateStr);    // Date range required
+
+      // Apply cursor for pagination
+      if (cursor != null && cursor.isNotEmpty) {
+        query = query.gt('id', cursor);
+      }
+
+      // Fetch limit + 1 to detect if more data exists
+      final response = await query
+          .order('id', ascending: true)
+          .limit(pageSize + 1);
+
+      // Check if we have more data
+      final hasMore = (response as List<dynamic>).length > pageSize;
+      final claims = hasMore
+          ? (response as List<dynamic>).take(pageSize).toList()
+          : (response as List<dynamic>);
+
+      // Generate next cursor from last claim
+      String? nextCursor;
+      if (hasMore && claims.isNotEmpty) {
+        final lastClaim = claims.last as Map<String, dynamic>;
+        nextCursor = lastClaim['id'] as String;
+      }
 
       final geoMap = <String, GeographicData>{};
-      final now = DateTime.now().toUtc();
 
-      for (final row in response as List<dynamic>) {
+      for (final row in claims) {
         final address = row['address'] as Map<String, dynamic>?;
         if (address == null) continue;
 
@@ -389,8 +749,9 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
           continue; // Skip if no valid grouping field
         }
 
+        // key is guaranteed to be non-null here due to the if-else logic above
         final data = geoMap.putIfAbsent(
-          key!,
+          key,
           () => GeographicData(
             province: keyProvince,
             city: keyCity,
@@ -419,60 +780,169 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         );
       }).toList(growable: false);
 
-      return Result.ok(rows);
+      // Warn if limit reached
+      if (hasMore) {
+        AppLogger.warn(
+          'fetchGeographicReportPage() returned $pageSize claims (limit reached). More data available.',
+          name: 'SupabaseReportingRemoteDataSource',
+        );
+      }
+
+      return Result.ok(PaginatedResult(
+        items: rows,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+      ));
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch geographic report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching geographic report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
   @override
-  Future<Result<List<InsurerPerformanceReportRow>>> fetchInsurerPerformanceReport() async {
+  Future<Result<PaginatedResult<InsurerPerformanceReportRow>>> fetchInsurerPerformanceReportPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
     try {
-      final response = await _client.rpc('get_insurer_performance_report').select();
-      final rows = (response as List<dynamic>)
-          .map(
-            (row) => InsurerPerformanceReportRow.fromJson(
-              Map<String, dynamic>.from(row as Map),
-            ),
-          )
-          .toList(growable: false);
-      return Result.ok(rows);
-    } on PostgrestException catch (_) {
-      return _fetchInsurerPerformanceDirect();
-    } catch (err) {
+      // Try RPC first (if it exists and supports date range)
+      try {
+        final response = await _client.rpc('get_insurer_performance_report').select();
+        final rows = (response as List<dynamic>)
+            .map(
+              (row) => InsurerPerformanceReportRow.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList(growable: false);
+        // RPC doesn't support pagination, return all results
+        return Result.ok(PaginatedResult(
+          items: rows,
+          nextCursor: null,
+          hasMore: false,
+        ));
+      } on PostgrestException catch (_) {
+        // RPC doesn't exist, fall back to paginated direct query
+      }
+
+      return _fetchInsurerPerformanceDirectPage(
+        startDate: startDate,
+        endDate: endDate,
+        cursor: cursor,
+        limit: limit,
+      );
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching insurer performance report',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
-  Future<Result<List<InsurerPerformanceReportRow>>> _fetchInsurerPerformanceDirect() async {
+  Future<Result<PaginatedResult<InsurerPerformanceReportRow>>> _fetchInsurerPerformanceDirectPage({
+    required DateTime startDate,
+    required DateTime endDate,
+    String? cursor,
+    int limit = 100,
+  }) async {
     try {
-      final response = await _client
+      // Validate and enforce limit
+      final pageSize = limit.clamp(1, 500);
+      final startDateStr = startDate.toIso8601String();
+      final endDateStr = endDate.toIso8601String();
+
+      // Fetch insurers (paginated by insurer_id)
+      var query = _client
           .from('insurers')
-          .select('''
-            id,
-            name,
-            claims(id, status, created_at, closed_at, damage_cause)
-          ''')
-          .limit(1000);
+          .select('id, name');
 
+      // Apply cursor for pagination (by insurer_id)
+      if (cursor != null && cursor.isNotEmpty) {
+        query = query.gt('id', cursor);
+      }
+
+      // Fetch limit + 1 to detect if more data exists
+      final insurersResponse = await query
+          .order('id', ascending: true)
+          .limit(pageSize + 1);
+
+      // Check if we have more data
+      final hasMore = (insurersResponse as List<dynamic>).length > pageSize;
+      final insurers = hasMore
+          ? (insurersResponse as List<dynamic>).take(pageSize).toList()
+          : (insurersResponse as List<dynamic>);
+
+      // Generate next cursor from last insurer
+      String? nextCursor;
+      if (hasMore && insurers.isNotEmpty) {
+        final lastInsurer = insurers.last as Map<String, dynamic>;
+        nextCursor = lastInsurer['id'] as String;
+      }
+
+      if (insurers.isEmpty) {
+        return Result.ok(PaginatedResult(
+          items: [],
+          nextCursor: null,
+          hasMore: false,
+        ));
+      }
+
+      // Fetch claims for these insurers with date range filter
+      final insurerIds = insurers.map((i) => (i as Map<String, dynamic>)['id'] as String).toList();
+      
+      // Use IN filter for multiple insurer IDs (more efficient than OR)
+      // Use report pagination pageSize for claims fetching (bounded by insurerIds and date range)
+      // Note: This limits total claims fetched, not per insurer
+      // Aggregation will work with available claims data
+      final claimsResponse = await _client
+          .from('claims')
+          .select('id, insurer_id, status, created_at, closed_at, damage_cause')
+          .inFilter('insurer_id', insurerIds)
+          .gte('created_at', startDateStr)  // Date range required
+          .lte('created_at', endDateStr)     // Date range required
+          .order('id', ascending: true)     // Deterministic ordering (matches cursor strategy)
+          .limit(pageSize);  // Use report pagination pageSize (100 default, 500 max)
+
+      // Group claims by insurer
+      final claimsByInsurer = <String, List<Map<String, dynamic>>>{};
+      for (final claim in claimsResponse as List<dynamic>) {
+        final claimMap = claim as Map<String, dynamic>;
+        final insurerId = claimMap['insurer_id'] as String;
+        claimsByInsurer.putIfAbsent(insurerId, () => []).add(claimMap);
+      }
+
+      // Build insurer map from insurers list
       final insurerMap = <String, InsurerPerformanceData>{};
-
-      for (final insurer in response as List<dynamic>) {
-        final insurerId = insurer['id'] as String;
-        final insurerName = insurer['name'] as String;
-        final claims = insurer['claims'] as List<dynamic>? ?? [];
-
-        final data = insurerMap.putIfAbsent(
-          insurerId,
-          () => InsurerPerformanceData(
-            insurerId: insurerId,
-            insurerName: insurerName,
-          ),
+      for (final insurer in insurers) {
+        final insurerMapData = insurer as Map<String, dynamic>;
+        final insurerId = insurerMapData['id'] as String;
+        final insurerName = insurerMapData['name'] as String;
+        
+        final data = InsurerPerformanceData(
+          insurerId: insurerId,
+          insurerName: insurerName,
         );
 
+        final claims = claimsByInsurer[insurerId] ?? [];
         final damageCauses = <String>{};
+        
         for (final claim in claims) {
           data.totalClaims++;
           final status = claim['status'] as String? ?? 'new';
@@ -500,6 +970,7 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         }
 
         data.uniqueDamageCauseCount = damageCauses.length;
+        insurerMap[insurerId] = data;
       }
 
       final rows = insurerMap.values.map((data) {
@@ -518,15 +989,38 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         );
       }).toList(growable: false);
 
-      return Result.ok(rows);
+      // Warn if limit reached
+      if (hasMore) {
+        AppLogger.warn(
+          'fetchInsurerPerformanceReportPage() returned $pageSize insurers (limit reached). More data available.',
+          name: 'SupabaseReportingRemoteDataSource',
+        );
+      }
+
+      return Result.ok(PaginatedResult(
+        items: rows,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+      ));
     } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch insurer performance report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+      );
       return Result.err(mapPostgrestException(err));
-    } catch (err) {
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching insurer performance report page',
+        name: 'SupabaseReportingRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
       return Result.err(UnknownError(err));
     }
   }
 
-  @override
+  // Note: This method is kept for backward compatibility but is not part of the new paginated interface
   Future<Result<List<InsurerDamageCauseRow>>> fetchInsurerDamageCauseBreakdown() async {
     try {
       final response = await _client.rpc('get_insurer_damage_cause_breakdown').select();
@@ -609,7 +1103,7 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
     }
   }
 
-  @override
+  // Note: This method is kept for backward compatibility but is not part of the new paginated interface
   Future<Result<List<InsurerStatusBreakdownRow>>> fetchInsurerStatusBreakdown() async {
     try {
       final response = await _client.rpc('get_insurer_status_breakdown').select();

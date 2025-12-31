@@ -41,9 +41,13 @@ class ReportingController extends _$ReportingController {
     final now = DateTime.now().toUtc();
     final today = DateTime.utc(now.year, now.month, now.day);
     final startDate = today.subtract(Duration(days: window.days - 1));
+    final endDate = today.add(const Duration(days: 1));
+    
+    // Date range is now required (enforced at method signature level)
     final result = await repository.fetchDailyReports(
       startDate: startDate,
-      endDate: today.add(const Duration(days: 1)),
+      endDate: endDate,
+      limit: 90,
     );
     if (result.isErr) {
       throw result.error;

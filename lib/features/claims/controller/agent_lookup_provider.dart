@@ -1,6 +1,6 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../../../data/clients/supabase_client.dart';
+import '../../../data/repositories/agent_lookup_repository_supabase.dart';
 
 part 'agent_lookup_provider.g.dart';
 
@@ -10,23 +10,15 @@ Future<String?> agentName(Ref ref, String? agentId) async {
     return null;
   }
 
-  final client = ref.watch(supabaseClientProvider);
-  final data = await client
-      .from('profiles')
-      .select('full_name')
-      .eq('id', agentId)
-      .maybeSingle();
+  final repository = ref.watch(agentLookupRepositoryProvider);
+  final result = await repository.fetchAgentName(agentId);
 
-  if (data == null) {
-    return null;
+  if (result.isErr) {
+    // Propagate error as AsyncError (no silent failure)
+    throw result.error;
   }
 
-  final map = Map<String, dynamic>.from(data as Map);
-  final name = (map['full_name'] as String?)?.trim();
-  if (name == null || name.isEmpty) {
-    return null;
-  }
-  return name;
+  return result.data;
 }
 
 

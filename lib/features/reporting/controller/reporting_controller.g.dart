@@ -88,7 +88,7 @@ final class ReportingControllerProvider
 }
 
 String _$reportingControllerHash() =>
-    r'388d0edde456c8e9ae35c459d05ef115fd04561c';
+    r'3234a1149eaaf67d5e585e88703eaa4ecc72a9f1';
 
 abstract class _$ReportingController extends $AsyncNotifier<ReportingState> {
   FutureOr<ReportingState> build();

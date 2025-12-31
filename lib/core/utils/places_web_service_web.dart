@@ -227,7 +227,7 @@ Please check Google Cloud Console:
       } catch (e) {
         validationError = 'Error accessing promise .then property: $e';
         AppLogger.debug(
-          validationError!,
+          validationError,
           name: 'PlacesWebService',
         );
         isValidPromise = false;

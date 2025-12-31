@@ -8,26 +8,15 @@ part of 'assignment_controller.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Fetches assignable jobs with filtering support.
 
-@ProviderFor(assignableJobs)
-const assignableJobsProvider = AssignableJobsFamily._();
+@ProviderFor(AssignableJobsController)
+const assignableJobsControllerProvider = AssignableJobsControllerFamily._();
 
-/// Fetches assignable jobs with filtering support.
-
-final class AssignableJobsProvider
+final class AssignableJobsControllerProvider
     extends
-        $FunctionalProvider<
-          AsyncValue<List<ClaimSummary>>,
-          List<ClaimSummary>,
-          FutureOr<List<ClaimSummary>>
-        >
-    with
-        $FutureModifier<List<ClaimSummary>>,
-        $FutureProvider<List<ClaimSummary>> {
-  /// Fetches assignable jobs with filtering support.
-  const AssignableJobsProvider._({
-    required AssignableJobsFamily super.from,
+        $AsyncNotifierProvider<AssignableJobsController, AssignableJobsState> {
+  const AssignableJobsControllerProvider._({
+    required AssignableJobsControllerFamily super.from,
     required ({
       ClaimStatus? statusFilter,
       bool? assignedFilter,
@@ -38,52 +27,30 @@ final class AssignableJobsProvider
     super.argument,
   }) : super(
          retry: null,
-         name: r'assignableJobsProvider',
+         name: r'assignableJobsControllerProvider',
          isAutoDispose: true,
          dependencies: null,
          $allTransitiveDependencies: null,
        );
 
   @override
-  String debugGetCreateSourceHash() => _$assignableJobsHash();
+  String debugGetCreateSourceHash() => _$assignableJobsControllerHash();
 
   @override
   String toString() {
-    return r'assignableJobsProvider'
+    return r'assignableJobsControllerProvider'
         ''
         '$argument';
   }
 
   @$internal
   @override
-  $FutureProviderElement<List<ClaimSummary>> $createElement(
-    $ProviderPointer pointer,
-  ) => $FutureProviderElement(pointer);
-
-  @override
-  FutureOr<List<ClaimSummary>> create(Ref ref) {
-    final argument =
-        this.argument
-            as ({
-              ClaimStatus? statusFilter,
-              bool? assignedFilter,
-              String? technicianIdFilter,
-              DateTime? dateFrom,
-              DateTime? dateTo,
-            });
-    return assignableJobs(
-      ref,
-      statusFilter: argument.statusFilter,
-      assignedFilter: argument.assignedFilter,
-      technicianIdFilter: argument.technicianIdFilter,
-      dateFrom: argument.dateFrom,
-      dateTo: argument.dateTo,
-    );
-  }
+  AssignableJobsController create() => AssignableJobsController();
 
   @override
   bool operator ==(Object other) {
-    return other is AssignableJobsProvider && other.argument == argument;
+    return other is AssignableJobsControllerProvider &&
+        other.argument == argument;
   }
 
   @override
@@ -92,14 +59,16 @@ final class AssignableJobsProvider
   }
 }
 
-String _$assignableJobsHash() => r'252558991f390b517e4c49e92397cca0e8ac3556';
+String _$assignableJobsControllerHash() =>
+    r'67eb0fa1505111ea040cf570a549c241c480d48e';
 
-/// Fetches assignable jobs with filtering support.
-
-final class AssignableJobsFamily extends $Family
+final class AssignableJobsControllerFamily extends $Family
     with
-        $FunctionalFamilyOverride<
-          FutureOr<List<ClaimSummary>>,
+        $ClassFamilyOverride<
+          AssignableJobsController,
+          AsyncValue<AssignableJobsState>,
+          AssignableJobsState,
+          FutureOr<AssignableJobsState>,
           ({
             ClaimStatus? statusFilter,
             bool? assignedFilter,
@@ -108,24 +77,22 @@ final class AssignableJobsFamily extends $Family
             DateTime? dateTo,
           })
         > {
-  const AssignableJobsFamily._()
+  const AssignableJobsControllerFamily._()
     : super(
         retry: null,
-        name: r'assignableJobsProvider',
+        name: r'assignableJobsControllerProvider',
         dependencies: null,
         $allTransitiveDependencies: null,
         isAutoDispose: true,
       );
 
-  /// Fetches assignable jobs with filtering support.
-
-  AssignableJobsProvider call({
+  AssignableJobsControllerProvider call({
     ClaimStatus? statusFilter,
     bool? assignedFilter,
     String? technicianIdFilter,
     DateTime? dateFrom,
     DateTime? dateTo,
-  }) => AssignableJobsProvider._(
+  }) => AssignableJobsControllerProvider._(
     argument: (
       statusFilter: statusFilter,
       assignedFilter: assignedFilter,
@@ -137,7 +104,55 @@ final class AssignableJobsFamily extends $Family
   );
 
   @override
-  String toString() => r'assignableJobsProvider';
+  String toString() => r'assignableJobsControllerProvider';
+}
+
+abstract class _$AssignableJobsController
+    extends $AsyncNotifier<AssignableJobsState> {
+  late final _$args =
+      ref.$arg
+          as ({
+            ClaimStatus? statusFilter,
+            bool? assignedFilter,
+            String? technicianIdFilter,
+            DateTime? dateFrom,
+            DateTime? dateTo,
+          });
+  ClaimStatus? get statusFilter => _$args.statusFilter;
+  bool? get assignedFilter => _$args.assignedFilter;
+  String? get technicianIdFilter => _$args.technicianIdFilter;
+  DateTime? get dateFrom => _$args.dateFrom;
+  DateTime? get dateTo => _$args.dateTo;
+
+  FutureOr<AssignableJobsState> build({
+    ClaimStatus? statusFilter,
+    bool? assignedFilter,
+    String? technicianIdFilter,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  });
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build(
+      statusFilter: _$args.statusFilter,
+      assignedFilter: _$args.assignedFilter,
+      technicianIdFilter: _$args.technicianIdFilter,
+      dateFrom: _$args.dateFrom,
+      dateTo: _$args.dateTo,
+    );
+    final ref =
+        this.ref as $Ref<AsyncValue<AssignableJobsState>, AssignableJobsState>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<AsyncValue<AssignableJobsState>, AssignableJobsState>,
+              AsyncValue<AssignableJobsState>,
+              Object?,
+              Object?
+            >;
+    element.handleValue(ref, created);
+  }
 }
 
 /// Controller for assignment operations.
@@ -169,7 +184,7 @@ final class AssignmentControllerProvider
 }
 
 String _$assignmentControllerHash() =>
-    r'8083676c68baac90f63d19741e7b63cf9d447a92';
+    r'49c616f9effcb76c4d6cb459d14953f453a183cf';
 
 /// Controller for assignment operations.
 
