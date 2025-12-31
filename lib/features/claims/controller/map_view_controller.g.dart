@@ -82,7 +82,7 @@ final class ClaimMapMarkersProvider
   }
 }
 
-String _$claimMapMarkersHash() => r'2ab961290252e2ec6bff6f1642d6302d33a36c48';
+String _$claimMapMarkersHash() => r'c29c5345c4a9d1085497aba4e50378b389eb1cb2';
 
 final class ClaimMapMarkersFamily extends $Family
     with

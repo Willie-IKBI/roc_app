@@ -8,8 +8,22 @@ import '../models/claim_status_history_row.dart';
 import '../models/claim_summary_row.dart';
 import '../models/client_row.dart';
 import '../models/contact_attempt_row.dart';
+import '../../domain/models/paginated_result.dart';
 
 abstract class ClaimRemoteDataSource {
+  /// Fetch paginated claims from v_claims_list view
+  /// 
+  /// Cursor format: "sla_started_at_iso8601|claim_id"
+  /// Example: "2025-01-15T10:30:00Z|550e8400-e29b-41d4-a716-446655440000"
+  /// 
+  /// Returns rows + next cursor (null if no more data)
+  Future<Result<PaginatedResult<ClaimSummaryRow>>> fetchQueuePage({
+    String? cursor,
+    int limit = 50,
+    ClaimStatus? status,
+  });
+
+  @Deprecated('Use fetchQueuePage instead. This method will be removed in a future version.')
   Future<Result<List<ClaimSummaryRow>>> fetchQueue({ClaimStatus? status});
 
   Future<Result<ClaimRow>> fetchClaim(String claimId);

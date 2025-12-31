@@ -25,11 +25,13 @@ Future<Map<String, int>> technicianAssignments(
   final dateStr = date.toIso8601String().split('T')[0];
   
   try {
+    // Safety limit: max 1000 appointments per day for assignment counting
     final response = await client
         .from('claims')
         .select('technician_id')
         .eq('appointment_date', dateStr)
-        .not('technician_id', 'is', null);
+        .not('technician_id', 'is', null)
+        .limit(1000);
     
     final assignments = <String, int>{};
     for (final row in response as List<dynamic>) {
@@ -56,13 +58,15 @@ Future<Map<String, dynamic>> technicianAvailability(
   
   try {
     // Fetch all appointments for this technician on this date
+    // Safety limit: max 100 appointments per technician per day
     final response = await client
         .from('claims')
         .select('id, appointment_time, status')
         .eq('technician_id', technicianId)
         .eq('appointment_date', dateStr)
         .not('appointment_time', 'is', null)
-        .order('appointment_time');
+        .order('appointment_time')
+        .limit(100);
     
     final appointments = <Map<String, dynamic>>[];
     for (final row in response as List<dynamic>) {

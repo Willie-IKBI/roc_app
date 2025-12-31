@@ -23,7 +23,7 @@ import '../../../domain/value_objects/claim_enums.dart';
 import '../../../domain/value_objects/contact_method.dart';
 import '../controller/agent_lookup_provider.dart';
 import '../../claims/controller/detail_controller.dart';
-import '../../claims/controller/reference_data_providers.dart';
+import '../../reference_data/controller/reference_data_controller.dart';
 import '../../claims/controller/technician_controller.dart';
 import 'widgets/technician_selector.dart';
 import 'widgets/appointment_picker.dart';
@@ -38,7 +38,7 @@ class ClaimDetailScreen extends ConsumerWidget {
     final claim = ref.watch(claimDetailControllerProvider(claimId));
     final notifier = ref.read(claimDetailControllerProvider(claimId).notifier);
     final isBusy = claim.isLoading;
-    final insurers = ref.watch(insurersOptionsProvider);
+    final insurers = ref.watch(insurerOptionsProvider);
     final claimData = claim.asData?.value;
 
     String? resolvedInsurer;

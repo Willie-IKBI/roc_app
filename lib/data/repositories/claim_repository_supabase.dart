@@ -4,6 +4,7 @@ import '../../domain/models/claim.dart';
 import '../../domain/models/claim_draft.dart';
 import '../../domain/models/claim_summary.dart';
 import '../../domain/models/contact_attempt_input.dart';
+import '../../domain/models/paginated_result.dart';
 import '../../domain/repositories/claim_repository.dart';
 import '../../domain/value_objects/claim_enums.dart';
 import '../clients/supabase_client.dart';
@@ -22,6 +23,29 @@ class ClaimRepositorySupabase implements ClaimRepository {
   final ClaimRemoteDataSource _remote;
 
   @override
+  Future<Result<PaginatedResult<ClaimSummary>>> fetchQueuePage({
+    String? cursor,
+    int limit = 50,
+    ClaimStatus? status,
+  }) async {
+    final result = await _remote.fetchQueuePage(
+      cursor: cursor,
+      limit: limit,
+      status: status,
+    );
+    if (result.isErr) {
+      return Result.err(result.error);
+    }
+    final page = result.data;
+    return Result.ok(PaginatedResult(
+      items: page.items.map((row) => row.toDomain()).toList(growable: false),
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+    ));
+  }
+
+  @override
+  @Deprecated('Use fetchQueuePage instead. This method will be removed in a future version.')
   Future<Result<List<ClaimSummary>>> fetchQueue({ClaimStatus? status}) async {
     final result = await _remote.fetchQueue(status: status);
     return result.map(

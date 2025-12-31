@@ -55,7 +55,8 @@ Future<DaySchedule> daySchedule(
         ''')
         .eq('appointment_date', dateStr)
         .not('appointment_time', 'is', null)
-        .order('appointment_time');
+        .order('appointment_time')
+        .limit(200); // Safety limit: max 200 appointments per day
 
     // Fetch all technicians
     final techniciansResult = await userRepository.fetchTechnicians();

@@ -106,7 +106,7 @@ final class TechnicianAssignmentsProvider
 }
 
 String _$technicianAssignmentsHash() =>
-    r'21b16d7d5bf54a7d16e337983b04eaf671075623';
+    r'2f4b7e65ee6e2f541066ddc34af683ff7d2da58f';
 
 final class TechnicianAssignmentsFamily extends $Family
     with $FunctionalFamilyOverride<FutureOr<Map<String, int>>, DateTime> {
@@ -189,7 +189,7 @@ final class TechnicianAvailabilityProvider
 }
 
 String _$technicianAvailabilityHash() =>
-    r'4c8500059982e18bcc45b745b954da38b0fa698f';
+    r'866928163f774188f3fd03a9ae2dd557ca3da0b9';
 
 final class TechnicianAvailabilityFamily extends $Family
     with

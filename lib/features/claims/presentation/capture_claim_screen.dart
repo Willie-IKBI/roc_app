@@ -24,7 +24,8 @@ import '../../../data/repositories/claim_repository_supabase.dart';
 import '../../../domain/models/claim_draft.dart';
 import '../../../domain/value_objects/claim_enums.dart';
 import '../../claims/controller/capture_controller.dart';
-import '../../claims/controller/reference_data_providers.dart';
+import '../../../domain/models/reference_option.dart';
+import '../../reference_data/controller/reference_data_controller.dart';
 import 'widgets/technician_selector.dart';
 import 'widgets/appointment_picker.dart';
 
@@ -429,16 +430,16 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
     if (value == null || value.isEmpty) {
       return;
     }
-    final estatesValue = ref.read(estatesOptionsProvider);
+    final estatesValue = ref.read(estateOptionsProvider);
     estatesValue.whenData((options) {
       final match = options.firstWhereOrNull(
-        (option) => option.name.toLowerCase() == value.toLowerCase(),
+        (option) => option.label.toLowerCase() == value.toLowerCase(),
       );
       if (match != null) {
         setState(() {
           _selectedEstateId = match.id;
           if (_addressComplexController.text.trim().isEmpty) {
-            _addressComplexController.text = match.name;
+            _addressComplexController.text = match.label;
           }
         });
       } else if (_addressComplexController.text.trim().isEmpty) {
@@ -1838,10 +1839,10 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
   @override
   Widget build(BuildContext context) {
     final submission = ref.watch(claimCaptureControllerProvider);
-    final insurers = ref.watch(insurersOptionsProvider);
-    final brands = ref.watch(brandsOptionsProvider);
+    final insurers = ref.watch(insurerOptionsProvider);
+    final brands = ref.watch(brandOptionsProvider);
     final insurerOptions = insurers.asData?.value ?? const <ReferenceOption>[];
-    final brandOptions = brands.asData?.value ?? const <BrandOption>[];
+    final brandOptions = brands.asData?.value ?? const <ReferenceOption>[];
     final requiresDasNumber = _requiresDasNumber;
     final brandsError = brands.whenOrNull<Object>(error: (error, _) => error);
     final brandsLoading = brands.isLoading;
@@ -2565,7 +2566,7 @@ class _ClaimItemCard extends StatefulWidget {
   final _ClaimItemFormState item;
   final int index;
   final VoidCallback onRemove;
-  final List<BrandOption> brandOptions;
+  final List<ReferenceOption> brandOptions;
   final bool brandsLoading;
   final Object? brandsError;
 
@@ -2641,7 +2642,7 @@ class _ClaimItemCardState extends State<_ClaimItemCard> {
                   for (final option in widget.brandOptions)
                     DropdownMenuItem(
                       value: option.id,
-                      child: Text(option.name),
+                      child: Text(option.label),
                     ),
                   const DropdownMenuItem(
                     value: _otherBrandValue,
@@ -2666,8 +2667,8 @@ class _ClaimItemCardState extends State<_ClaimItemCard> {
                           setState(() {
                             widget.item.useCustomBrand = false;
                             widget.item.selectedBrandId = brand.id;
-                            widget.item.selectedBrandName = brand.name;
-                            widget.item.brand.text = brand.name;
+                            widget.item.selectedBrandName = brand.label;
+                            widget.item.brand.text = brand.label;
                           });
                         }
                       },

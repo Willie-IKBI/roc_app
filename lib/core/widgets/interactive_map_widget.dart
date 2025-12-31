@@ -1,29 +1,59 @@
 import 'dart:html' as html;
-import 'dart:js' as js;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:js/js.dart';
 
 import '../logging/logger.dart';
+
+/// Helper to convert Dart types to JSAny (minimal implementation for Maps/Lists)
+JSAny? _dartToJS(dynamic value) {
+  if (value == null) return null;
+  if (value is String) return value.toJS;
+  if (value is num) return value.toJS;
+  if (value is bool) return value.toJS;
+  if (value is List) {
+    // Create JS array manually - JSArray.from expects a single JSObject (array-like)
+    // So we create an empty array and populate it
+    final jsArray = JSArray.from(JSObject());
+    for (var i = 0; i < value.length; i++) {
+      final jsVal = _dartToJS(value[i]);
+      if (jsVal != null) {
+        jsArray[i] = jsVal as JSObject;
+      }
+    }
+    return jsArray;
+  }
+  if (value is Map) {
+    final jsObj = JSObject();
+    value.forEach((key, val) {
+      final jsVal = _dartToJS(val);
+      if (jsVal != null) {
+        jsObj.setProperty(key.toString().toJS, jsVal);
+      }
+    });
+    return jsObj;
+  }
+  return value.toJS;
+}
 
 @JS('rocMapsAPI')
 external RocMapsAPI get rocMapsAPI;
 
 @JS()
-@anonymous
-class RocMapsAPI {
+extension type RocMapsAPI._(JSObject _) implements JSObject {
   external bool isReady();
-  external dynamic getMapClass();
-  external dynamic getLatLngClass();
-  external dynamic getGeocoderClass();
-  external dynamic getMapTypeId();
-  external dynamic getMapTypeIdRoadmap();
-  external dynamic getMapsObject();
-  external js.JsObject createLatLng(double lat, double lng);
-  external dynamic createMap(dynamic container, dynamic options);
-  external js.JsObject createMarker(dynamic options);
-  external dynamic createMapWithClickListener(dynamic container, dynamic options, dynamic onClickCallback);
+  external JSAny? getMapClass();
+  external JSAny? getLatLngClass();
+  external JSAny? getGeocoderClass();
+  external JSAny? getMapTypeId();
+  external JSAny? getMapTypeIdRoadmap();
+  external JSAny? getMapsObject();
+  external JSObject createLatLng(double lat, double lng);
+  external JSAny? createMap(JSAny? container, JSAny? options);
+  external JSObject createMarker(JSAny? options);
+  external JSAny? createMapWithClickListener(JSAny? container, JSAny? options, JSAny? onClickCallback);
 }
 
 /// An interactive Google Map widget for web.
@@ -61,7 +91,7 @@ class InteractiveMapWidget extends StatefulWidget {
 
 class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
   html.DivElement? _mapContainer;
-  dynamic _mapInstance; // Can be js.JsObject or dynamic depending on how map is created
+  dynamic _mapInstance; // Can be JSObject or dynamic depending on how map is created
   late final String _mapId;
   final GlobalKey _containerKey = GlobalKey();
 
@@ -91,22 +121,22 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
     if (!kIsWeb || _mapInstance == null) return;
     if (widget.latitude != null && widget.longitude != null) {
       try {
-        // Try to use as JsObject first, fallback to dynamic
-        if (_mapInstance is js.JsObject) {
-          (_mapInstance as js.JsObject).callMethod('setCenter', [
-            widget.latitude,
-            widget.longitude,
-          ]);
-          (_mapInstance as js.JsObject).callMethod('setMarker', [
-            widget.latitude,
-            widget.longitude,
-            false, // draggable
-          ]);
+        // Try to use as JSObject first, fallback to dynamic
+        if (_mapInstance is JSObject) {
+          final centerArgs = JSArray.from(JSObject());
+          centerArgs[0] = widget.latitude!.toJS as JSObject;
+          centerArgs[1] = widget.longitude!.toJS as JSObject;
+          (_mapInstance as JSObject).callMethod('setCenter'.toJS, centerArgs);
+          final markerArgs = JSArray.from(JSObject());
+          markerArgs[0] = widget.latitude!.toJS as JSObject;
+          markerArgs[1] = widget.longitude!.toJS as JSObject;
+          markerArgs[2] = false.toJS as JSObject;
+          (_mapInstance as JSObject).callMethod('setMarker'.toJS, markerArgs);
         } else {
           // For dynamic type, we need to use JavaScript helper functions
           // The map instance from createMapWithClickListener should be accessible
           if (kDebugMode) {
-            print('_updateMapCenter: Map instance is not JsObject, skipping update');
+            print('_updateMapCenter: Map instance is not JSObject, skipping update');
           }
         }
       } catch (e) {
@@ -158,17 +188,17 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
 
         // Create map options
         final center = widget.latitude != null && widget.longitude != null
-            ? js.JsObject.jsify({
+            ? _dartToJS(<String, dynamic>{
                 'lat': widget.latitude,
                 'lng': widget.longitude,
               })
-            : js.JsObject.jsify({
+            : _dartToJS(<String, dynamic>{
                 'lat': -25.7, // Default to South Africa
                 'lng': 28.2,
               });
 
         final marker = widget.latitude != null && widget.longitude != null
-            ? js.JsObject.jsify({
+            ? _dartToJS(<String, dynamic>{
                 'lat': widget.latitude,
                 'lng': widget.longitude,
                 'draggable': false,
@@ -176,24 +206,25 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
               })
             : null;
 
-        final options = js.JsObject.jsify({
+        final onClickCallback = widget.onCoordinateSelected != null
+            ? ((JSNumber lat, JSNumber lng) {
+                widget.onCoordinateSelected?.call(lat.toDartDouble, lng.toDartDouble);
+              }).toJS
+            : null;
+
+        final options = _dartToJS(<String, dynamic>{
           'center': center,
           'zoom': widget.zoom,
           'marker': marker,
-          'onClick': widget.onCoordinateSelected != null
-              ? js.allowInterop((lat, lng) {
-                  widget.onCoordinateSelected?.call(lat, lng);
-                })
-              : null,
+          'onClick': onClickCallback,
         });
 
         // Get rocMap from window (safely)
-        js.JsObject? rocMap;
+        JSObject? rocMap;
         try {
-          final window = js.context['window'];
+          final window = globalContext['window'] as JSObject?;
           if (window != null) {
-            final windowObj = window as dynamic;
-            rocMap = windowObj['rocMap'] as js.JsObject?;
+            rocMap = window.getProperty('rocMap'.toJS) as JSObject?;
           }
         } catch (_) {
           // rocMap not available
@@ -201,7 +232,9 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
         
         if (rocMap != null) {
           // Create the map
-          _mapInstance = rocMap.callMethod('create', [_mapId, options]) as js.JsObject?;
+          final arrayConstructor = globalContext['Array'] as JSObject;
+          final createArgs = arrayConstructor.callMethod('from'.toJS, [[_mapId.toJS, options].toJS].toJS) as JSArray;
+          _mapInstance = rocMap.callMethod('create'.toJS, createArgs) as JSObject?;
         } else {
           if (kDebugMode) {
             print('rocMap not available, creating map directly');
@@ -272,7 +305,7 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
         return;
       }
 
-      final mapOptions = js.JsObject.jsify({
+      final mapOptions = _dartToJS(<String, dynamic>{
         'center': center,
         'zoom': widget.zoom,
         'mapTypeId': mapTypeId,
@@ -283,15 +316,15 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
       }
 
       // Use createMapWithClickListener to handle click events in JavaScript
-      dynamic onClickCallback;
+      JSFunction? onClickCallback;
       if (widget.onCoordinateSelected != null) {
-        onClickCallback = js.allowInterop((lat, lng) {
-          widget.onCoordinateSelected?.call(lat, lng);
-        });
+        onClickCallback = ((JSNumber lat, JSNumber lng) {
+          widget.onCoordinateSelected?.call(lat.toDartDouble, lng.toDartDouble);
+        }).toJS;
       }
 
       final mapResult = rocMapsAPI.createMapWithClickListener(
-        _mapContainer,
+        _mapContainer as JSAny?,
         mapOptions,
         onClickCallback,
       );
@@ -303,11 +336,11 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
         return;
       }
 
-      // Cast to JsObject safely
-      final map = mapResult as js.JsObject?;
+      // Cast to JSObject safely
+      final map = mapResult as JSObject?;
       if (map == null) {
         if (kDebugMode) {
-          print('Failed to cast map result to JsObject, type: ${mapResult.runtimeType}');
+          print('Failed to cast map result to JSObject, type: ${mapResult.runtimeType}');
           // Try to use it as dynamic anyway
           _mapInstance = mapResult as dynamic;
           if (_mapInstance != null) {
@@ -327,7 +360,7 @@ class _InteractiveMapWidgetState extends State<InteractiveMapWidget> {
       // Add marker if coordinates provided
       if (widget.latitude != null && widget.longitude != null) {
         try {
-          final markerOptions = js.JsObject.jsify({
+          final markerOptions = _dartToJS(<String, dynamic>{
             'position': center,
             'map': map ?? _mapInstance,
             'title': 'Selected location',

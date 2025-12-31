@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:js' as js;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:js/js.dart';
 
 import '../../../../core/config/env.dart';
 import '../../../../core/logging/logger.dart';
@@ -14,20 +15,50 @@ import '../../../../core/utils/places_web_service.dart';
 import '../../../../domain/value_objects/claim_enums.dart';
 import '../../controller/map_view_controller.dart';
 
+/// Helper to convert Dart types to JSAny (minimal implementation for Maps/Lists)
+JSAny? _dartToJS(dynamic value) {
+  if (value == null) return null;
+  if (value is String) return value.toJS;
+  if (value is num) return value.toJS;
+  if (value is bool) return value.toJS;
+  if (value is List) {
+    // Create JS array manually - JSArray.from expects a single JSObject (array-like)
+    // So we create an empty array and populate it
+    final jsArray = JSArray.from(JSObject());
+    for (var i = 0; i < value.length; i++) {
+      final jsVal = _dartToJS(value[i]);
+      if (jsVal != null) {
+        jsArray[i] = jsVal as JSObject;
+      }
+    }
+    return jsArray;
+  }
+  if (value is Map) {
+    final jsObj = JSObject();
+    value.forEach((key, val) {
+      final jsVal = _dartToJS(val);
+      if (jsVal != null) {
+        jsObj.setProperty(key.toString().toJS, jsVal);
+      }
+    });
+    return jsObj;
+  }
+  return value.toJS;
+}
+
 @JS('rocMapsAPI')
 external RocMapsAPI get rocMapsAPI;
 
 @JS()
-@anonymous
-class RocMapsAPI {
+extension type RocMapsAPI._(JSObject _) implements JSObject {
   external bool isReady();
-  external dynamic createMapWithMultipleMarkers(
-    dynamic container,
-    dynamic options,
-    dynamic markers, // Can be JSON string or array
-    dynamic onMarkerClick,
+  external JSAny? createMapWithMultipleMarkers(
+    JSAny? container,
+    JSAny? options,
+    JSAny? markers, // Can be JSON string or array
+    JSAny? onMarkerClick,
   );
-  external void updateMarkers(dynamic mapInstance, dynamic markers); // Can be JSON string or array
+  external void updateMarkers(JSAny? mapInstance, JSAny? markers); // Can be JSON string or array
 }
 
 /// An interactive Google Map widget for displaying multiple claim markers.
@@ -98,7 +129,7 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
   void dispose() {
     // Clean up callback reference
     try {
-      js.context.deleteProperty('rocMapMarkerClick_$_mapId');
+      (globalContext as JSObject).setProperty('rocMapMarkerClick_$_mapId'.toJS, null);
     } catch (_) {
       // Ignore cleanup errors
     }
@@ -161,7 +192,7 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
         name: 'InteractiveClaimsMapWidget',
       );
 
-      rocMapsAPI.updateMarkers(_mapInstance, markersJson);
+      rocMapsAPI.updateMarkers(_mapInstance, markersJson.toJS);
     } catch (e, stackTrace) {
       AppLogger.error(
         'Error updating markers: $e',
@@ -193,25 +224,102 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
   }
 
   void _initializeMap(double actualHeight) {
-    // Verify environment variables first
-    if (!Env.verifyEnvVars()) {
+    // Verify environment variables first with detailed validation
+    try {
+      if (!Env.verifyEnvVars()) {
+        final missingVars = <String>[];
+        if (Env.supabaseUrl.isEmpty) missingVars.add('SUPABASE_URL');
+        if (Env.supabaseAnonKey.isEmpty) missingVars.add('SUPABASE_ANON_KEY');
+        if (Env.googleMapsApiKey.isEmpty) missingVars.add('GOOGLE_MAPS_API_KEY');
+        
+        AppLogger.error(
+          'Environment variables missing in map widget: ${missingVars.join(", ")}',
+          name: 'InteractiveClaimsMapWidget',
+        );
+        
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Configuration error: Missing environment variables (${missingVars.join(", ")}). Please check your build configuration.';
+          });
+        }
+        return;
+      }
+      
+      // Validate API key format
+      if (Env.googleMapsApiKey.length < 20) {
+        AppLogger.error(
+          'Google Maps API key appears invalid (too short: ${Env.googleMapsApiKey.length} chars)',
+          name: 'InteractiveClaimsMapWidget',
+        );
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Invalid Google Maps API key format. Please check your configuration.';
+          });
+        }
+        return;
+      }
+      
+      if (!Env.googleMapsApiKey.startsWith('AIza') && !Env.googleMapsApiKey.startsWith('GOCSPX')) {
+        AppLogger.warn(
+          'Google Maps API key format may be invalid (does not start with AIza or GOCSPX)',
+          name: 'InteractiveClaimsMapWidget',
+        );
+      }
+    } catch (e, stackTrace) {
       AppLogger.error(
-        'Environment variables missing in map widget',
+        'Error validating environment variables: $e',
         name: 'InteractiveClaimsMapWidget',
+        error: e,
+        stackTrace: stackTrace,
       );
-    }
-    
-    if (!kIsWeb || Env.googleMapsApiKey.isEmpty || _mapContainer == null) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = Env.googleMapsApiKey.isEmpty 
-              ? 'Google Maps API key is not configured'
-              : 'Map container not available';
+          _errorMessage = 'Configuration error: Failed to validate environment variables.';
+        });
+      }
+      return;
+    }
+    
+    if (!kIsWeb) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Interactive map is only available on web platform';
         });
       }
       AppLogger.error(
-        'Map initialization failed: ${Env.googleMapsApiKey.isEmpty ? "API key missing" : "Container null"}',
+        'Map initialization failed: Not running on web platform',
+        name: 'InteractiveClaimsMapWidget',
+      );
+      return;
+    }
+    
+    if (Env.googleMapsApiKey.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Google Maps API key is not configured. Please set GOOGLE_MAPS_API_KEY environment variable.';
+        });
+      }
+      AppLogger.error(
+        'Map initialization failed: API key missing',
+        name: 'InteractiveClaimsMapWidget',
+      );
+      return;
+    }
+    
+    if (_mapContainer == null) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Map container not available. Please try refreshing the page.';
+        });
+      }
+      AppLogger.error(
+        'Map initialization failed: Container null',
         name: 'InteractiveClaimsMapWidget',
       );
       return;
@@ -227,11 +335,25 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
 
     // First, ensure the Google Maps script is loaded
     PlacesWebService.ensureLoaded(Env.googleMapsApiKey).then((_) {
-      if (!mounted || _mapContainer == null) {
+      if (!mounted) {
         AppLogger.debug(
-          'Widget unmounted or container null after script load',
+          'Widget unmounted after script load',
           name: 'InteractiveClaimsMapWidget',
         );
+        return;
+      }
+      
+      if (_mapContainer == null) {
+        AppLogger.error(
+          'Map container became null after script load',
+          name: 'InteractiveClaimsMapWidget',
+        );
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Map container not available. Please try refreshing the page.';
+          });
+        }
         return;
       }
 
@@ -324,8 +446,8 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
         }
 
         // Prepare map options
-        final mapOptions = js.JsObject.jsify({
-          'center': {
+        final mapOptions = _dartToJS(<String, dynamic>{
+          'center': <String, dynamic>{
             'lat': widget.initialCenterLat,
             'lng': widget.initialCenterLng,
           },
@@ -346,13 +468,14 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
         if (widget.onMarkerClick != null) {
           try {
             callbackName = 'rocMapMarkerClick_$_mapId';
-            js.context[callbackName] = js.allowInterop((dynamic claimId) {
+            final callback = ((JSString claimId) {
               try {
-                if (claimId is String && widget.onMarkerClick != null) {
-                  widget.onMarkerClick?.call(claimId);
+                final claimIdStr = claimId.toDart;
+                if (widget.onMarkerClick != null) {
+                  widget.onMarkerClick?.call(claimIdStr);
                 } else {
                   AppLogger.debug(
-                    'Marker click callback received invalid claimId: $claimId (type: ${claimId.runtimeType})',
+                    'Marker click callback received invalid claimId: $claimIdStr',
                     name: 'InteractiveClaimsMapWidget',
                   );
                 }
@@ -364,7 +487,8 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
                   stackTrace: stackTrace,
                 );
               }
-            });
+            }).toJS;
+            (globalContext as JSObject).setProperty(callbackName!.toJS, callback);
             AppLogger.debug(
               'Marker click callback registered: $callbackName',
               name: 'InteractiveClaimsMapWidget',
@@ -382,27 +506,75 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
 
         // Validate inputs before calling JavaScript function
         if (_mapContainer == null) {
-          throw StateError('Map container is null');
+          throw StateError('Map container is null - cannot initialize map');
         }
+        
+        // Validate rocMapsAPI is available
+        try {
+          if (!rocMapsAPI.isReady()) {
+            throw StateError('Google Maps API is not ready - rocMapsAPI.isReady() returned false');
+          }
+        } catch (e, stackTrace) {
+          AppLogger.error(
+            'Error checking rocMapsAPI.isReady(): $e',
+            name: 'InteractiveClaimsMapWidget',
+            error: e,
+            stackTrace: stackTrace,
+          );
+          throw StateError('Failed to verify Google Maps API availability: $e');
+        }
+        
         if (markersJson.isEmpty) {
           AppLogger.debug(
-            'No markers to display on map',
+            'No markers to display on map (empty markers list)',
             name: 'InteractiveClaimsMapWidget',
           );
         }
 
+        // Validate mapOptions was created successfully
+        if (mapOptions == null) {
+          throw StateError('Failed to create map options - jsify returned null');
+        }
+
         // Create map with markers (pass JSON string)
         try {
-          _mapInstance = rocMapsAPI.createMapWithMultipleMarkers(
-            _mapContainer,
-            mapOptions,
-            markersJson,
-            callbackName,
+          AppLogger.debug(
+            'Calling rocMapsAPI.createMapWithMultipleMarkers with ${markersData.length} markers',
+            name: 'InteractiveClaimsMapWidget',
           );
           
-          if (_mapInstance == null) {
-            throw StateError('Map instance is null after creation');
+          // Wrap the call in additional error handling
+          dynamic mapResult;
+          try {
+            mapResult = rocMapsAPI.createMapWithMultipleMarkers(
+              _mapContainer as JSAny?,
+              mapOptions,
+              markersJson.toJS,
+              callbackName?.toJS,
+            );
+          } catch (jsError, jsStackTrace) {
+            AppLogger.error(
+              'JavaScript error in createMapWithMultipleMarkers: $jsError',
+              name: 'InteractiveClaimsMapWidget',
+              error: jsError,
+              stackTrace: jsStackTrace,
+            );
+            throw StateError('JavaScript error during map creation: ${jsError.toString()}');
           }
+          
+          if (mapResult == null) {
+            AppLogger.error(
+              'createMapWithMultipleMarkers returned null',
+              name: 'InteractiveClaimsMapWidget',
+            );
+            throw StateError('Map instance is null after creation - JavaScript function returned null');
+          }
+          
+          _mapInstance = mapResult;
+          AppLogger.debug(
+            'Map instance created successfully',
+            name: 'InteractiveClaimsMapWidget',
+          );
         } catch (e, stackTrace) {
           AppLogger.error(
             'Error calling createMapWithMultipleMarkers: $e',
@@ -410,7 +582,17 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
             error: e,
             stackTrace: stackTrace,
           );
-          rethrow;
+          // Provide more specific error message
+          final errorStr = e.toString().toLowerCase();
+          String userMessage = 'Failed to initialize map: ${e.toString()}';
+          if (errorStr.contains('api key') || errorStr.contains('invalid key')) {
+            userMessage = 'Invalid Google Maps API key. Please check your API key configuration and ensure it has the required permissions.';
+          } else if (errorStr.contains('not available') || errorStr.contains('not ready')) {
+            userMessage = 'Google Maps API is not available. Please check your internet connection and API key configuration.';
+          } else if (errorStr.contains('quota') || errorStr.contains('limit')) {
+            userMessage = 'Google Maps API quota exceeded. Please check your Google Cloud Console billing and quota settings.';
+          }
+          throw StateError(userMessage);
         }
 
           if (mounted) {
@@ -449,24 +631,38 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
         if (mounted) {
           setState(() {
             _isLoading = false;
-            _errorMessage = 'Google Maps API not available. Please check your API key configuration.';
+            final errorStr = error.toString().toLowerCase();
+            if (errorStr.contains('timeout')) {
+              _errorMessage = 'Google Maps API initialization timed out. Please check your internet connection and try refreshing the page.';
+            } else if (errorStr.contains('not ready') || errorStr.contains('not available')) {
+              _errorMessage = 'Google Maps API is not available. Please check your API key configuration and ensure all required APIs are enabled in Google Cloud Console.';
+            } else {
+              _errorMessage = 'Failed to initialize Google Maps API: ${error.toString()}. Please check your API key configuration.';
+            }
           });
         }
       });
-    }).catchError((error) {
-      AppLogger.debug(
-        'Error loading Google Maps script: $error. Make sure GOOGLE_MAPS_API_KEY is set correctly',
+    }).catchError((error, stackTrace) {
+      AppLogger.error(
+        'Error loading Google Maps script: $error',
         name: 'InteractiveClaimsMapWidget',
         error: error,
+        stackTrace: stackTrace,
       );
       if (mounted) {
         setState(() {
           _isLoading = false;
           final errorStr = error.toString().toLowerCase();
           if (errorStr.contains('api key') || errorStr.contains('invalid key')) {
-            _errorMessage = 'Invalid Google Maps API key. Please check your configuration.';
+            _errorMessage = 'Invalid Google Maps API key. Please verify:\n1. API key is correct in env/prod.json\n2. Maps JavaScript API is enabled\n3. Places API is enabled\n4. API key restrictions allow your domain';
+          } else if (errorStr.contains('quota') || errorStr.contains('limit')) {
+            _errorMessage = 'Google Maps API quota exceeded. Please check your Google Cloud Console billing and quota settings.';
+          } else if (errorStr.contains('billing')) {
+            _errorMessage = 'Google Maps API billing issue. Please ensure billing is enabled for your Google Cloud project.';
+          } else if (errorStr.contains('network') || errorStr.contains('timeout')) {
+            _errorMessage = 'Network error loading Google Maps. Please check your internet connection and try again.';
           } else {
-            _errorMessage = 'Failed to load Google Maps: ${error.toString()}';
+            _errorMessage = 'Failed to load Google Maps: ${error.toString()}. Please check your API key configuration and browser console for details.';
           }
         });
       }
@@ -484,10 +680,12 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
   }
 
   Future<void> _waitForGoogleMaps() async {
-    if (!kIsWeb) return;
+    if (!kIsWeb) {
+      throw StateError('Google Maps API is only available on web platform');
+    }
 
     int attempts = 0;
-    const maxAttempts = 50;
+    const maxAttempts = 50; // 5 seconds total (50 * 100ms)
     const pollInterval = Duration(milliseconds: 100);
 
     AppLogger.debug(
@@ -505,22 +703,29 @@ class _InteractiveClaimsMapWidgetState extends State<InteractiveClaimsMapWidget>
           );
           return;
         }
-      } catch (e) {
-        // API not ready yet
+      } catch (e, stackTrace) {
+        // API not ready yet or error checking
         if (attempts % 10 == 0) {
           AppLogger.debug(
-            'Waiting for Google Maps API... attempt $attempts',
+            'Waiting for Google Maps API... attempt $attempts (error: $e)',
             name: 'InteractiveClaimsMapWidget',
             error: e,
+            stackTrace: stackTrace,
           );
         }
       }
       attempts++;
     }
 
-    AppLogger.debug(
-      'Google Maps API not ready after $maxAttempts attempts. This may indicate: 1. API key is invalid or missing, 2. Maps JavaScript API is not enabled in Google Cloud Console, 3. Network issues preventing script load',
+    // Timeout reached - throw error with helpful message
+    AppLogger.error(
+      'Google Maps API not ready after $maxAttempts attempts (${maxAttempts * 100}ms). This may indicate: 1. API key is invalid or missing, 2. Maps JavaScript API is not enabled in Google Cloud Console, 3. Network issues preventing script load, 4. API key restrictions blocking the domain',
       name: 'InteractiveClaimsMapWidget',
+    );
+    
+    throw TimeoutException(
+      'Google Maps API did not become ready within ${maxAttempts * 100}ms. Please check: 1. API key is correct, 2. Maps JavaScript API is enabled, 3. Network connectivity, 4. API key restrictions allow your domain',
+      const Duration(milliseconds: maxAttempts * 100),
     );
   }
 

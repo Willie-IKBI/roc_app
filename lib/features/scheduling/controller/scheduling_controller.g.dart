@@ -68,7 +68,7 @@ final class DayScheduleProvider
   }
 }
 
-String _$dayScheduleHash() => r'08cf7146d43c224dfc07747752b80b224c666eda';
+String _$dayScheduleHash() => r'b45a3b50e348f292b463b5aa8be1a06e37f10ca0';
 
 /// Fetches all appointments for a specific date, grouped by technician.
 

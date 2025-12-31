@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../data/clients/supabase_client.dart';
@@ -89,10 +90,26 @@ Future<List<ClaimMapMarker>> claimMapMarkers(
       }
     }
 
-    final response = await query;
+    // Safety limit: enforce maximum of 500 markers for map view
+    // This prevents unbounded queries that could cause performance issues
+    const maxMarkers = 500;
+    final response = await query
+        .order('sla_started_at', ascending: true)
+        .limit(maxMarkers);
 
     final markers = <ClaimMapMarker>[];
-    for (final row in response as List<dynamic>) {
+    final responseList = response as List<dynamic>;
+    
+    // Warn if we hit the limit (may indicate markers were truncated)
+    if (responseList.length >= maxMarkers) {
+      // Note: Using print for now since we don't have AppLogger import here
+      // This is a lightweight warning for "best effort" map view
+      if (kDebugMode) {
+        print('[MapViewController] Warning: Map markers query returned $maxMarkers results (limit reached). Some markers may not be displayed.');
+      }
+    }
+    
+    for (final row in responseList) {
       final address = row['address'] as Map<String, dynamic>?;
       if (address == null) continue;
 

@@ -28,17 +28,30 @@ class _ClaimsQueueScreenState extends ConsumerState<ClaimsQueueScreen> {
   PriorityLevel? _priorityFilter;
   String? _insurerFilter;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _statusFilter = widget.initialStatusFilter;
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    // Load next page when user scrolls within 200px of bottom
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      final controller =
+          ref.read(claimsQueueControllerProvider().notifier);
+      controller.loadNextPage();
+    }
   }
 
   void _resetFilters() {
@@ -52,22 +65,49 @@ class _ClaimsQueueScreenState extends ConsumerState<ClaimsQueueScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final queue = ref.watch(claimsQueueControllerProvider());
+    final queueAsync = ref.watch(claimsQueueControllerProvider());
+    final controller = ref.read(claimsQueueControllerProvider().notifier);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Claims Queue'),
         actions: const [],
       ),
       body: SafeArea(
-        child: queue.when(
-          data: (claims) {
+        child: queueAsync.when(
+          data: (state) {
+            // Show error snackbar if error exists (but don't hide items)
+            if (state.error != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error: ${state.error!.message}'),
+                    action: SnackBarAction(
+                      label: 'Retry',
+                      onPressed: () {
+                        if (state.isLoadingMore) {
+                          controller.loadNextPage();
+                        } else {
+                          controller.refresh();
+                        }
+                      },
+                    ),
+                  ),
+                );
+              });
+            }
+
+            // Sync status filter: when UI filter changes, update server-side filter
+            // This ensures server-side filtering is applied when user changes dropdown
+
             final insurers = {
-              for (final claim in claims) claim.insurerName,
+              for (final claim in state.items) claim.insurerName,
             }.toList()
               ..sort();
 
             final query = _searchController.text.trim().toLowerCase();
-            final filteredClaims = claims.where((claim) {
+            final filteredClaims = state.items.where((claim) {
+              // Status filter is already applied server-side, but we check for consistency
               final matchesStatus =
                   _statusFilter == null || claim.status == _statusFilter;
               final matchesPriority = _priorityFilter == null ||
@@ -77,7 +117,10 @@ class _ClaimsQueueScreenState extends ConsumerState<ClaimsQueueScreen> {
               final matchesSearch = query.isEmpty ||
                   claim.clientFullName.toLowerCase().contains(query) ||
                   claim.claimNumber.toLowerCase().contains(query);
-              return matchesStatus && matchesPriority && matchesInsurer && matchesSearch;
+              return matchesStatus &&
+                  matchesPriority &&
+                  matchesInsurer &&
+                  matchesSearch;
             }).toList()
               ..sort((a, b) {
                 final cmp = a.slaStartedAt.compareTo(b.slaStartedAt);
@@ -85,55 +128,87 @@ class _ClaimsQueueScreenState extends ConsumerState<ClaimsQueueScreen> {
                 return b.priority.index.compareTo(a.priority.index);
               });
 
-            if (claims.isEmpty) {
+            if (state.isLoading && state.items.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (state.items.isEmpty && !state.isLoading) {
               return const _EmptyQueue();
             }
 
             return RefreshIndicator(
-              onRefresh: () =>
-                  ref.read(claimsQueueControllerProvider().notifier).refresh(),
-              child: ListView(
+              onRefresh: () => controller.refresh(),
+              child: ListView.builder(
+                controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
-                children: [
-                  _FiltersBar(
-                    status: _statusFilter,
-                    onStatusChanged: (value) => setState(() {
-                      _statusFilter = value;
-                    }),
-                    priority: _priorityFilter,
-                    onPriorityChanged: (value) => setState(() {
-                      _priorityFilter = value;
-                    }),
-                    insurer: _insurerFilter,
-                    insurers: insurers,
-                    onInsurerChanged: (value) => setState(() {
-                      _insurerFilter = value;
-                    }),
-                    searchController: _searchController,
-                  onSearchChanged: (_) => setState(() {}),
-                    onReset: _resetFilters,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '${filteredClaims.length} of ${claims.length} claims',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  if (filteredClaims.isEmpty)
-                    const _EmptyQueue(
-                      message: 'No claims match the current filters.',
-                    )
-                  else
-                    for (final claim in filteredClaims)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _ClaimCard(
-                          claim: claim,
-                          onTap: () => context.push('/claims/${claim.claimId}'),
+                itemCount: filteredClaims.length +
+                    (state.isLoadingMore ? 1 : 0) +
+                    2, // +2 for filters bar and count
+                itemBuilder: (context, index) {
+                  // Filters bar
+                  if (index == 0) {
+                    return _FiltersBar(
+                      status: _statusFilter,
+                      onStatusChanged: (value) {
+                        setState(() {
+                          _statusFilter = value;
+                        });
+                        controller.setStatusFilter(value);
+                      },
+                      priority: _priorityFilter,
+                      onPriorityChanged: (value) => setState(() {
+                        _priorityFilter = value;
+                      }),
+                      insurer: _insurerFilter,
+                      insurers: insurers,
+                      onInsurerChanged: (value) => setState(() {
+                        _insurerFilter = value;
+                      }),
+                      searchController: _searchController,
+                      onSearchChanged: (_) => setState(() {}),
+                      onReset: _resetFilters,
+                    );
+                  }
+
+                  // Count text
+                  if (index == 1) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        Text(
+                          '${filteredClaims.length} of ${state.items.length} claims${state.hasMore ? ' (more available)' : ''}',
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
+                        const SizedBox(height: 12),
+                      ],
+                    );
+                  }
+
+                  // Adjust index for filters bar and count
+                  final claimIndex = index - 2;
+
+                  // Loading more indicator
+                  if (claimIndex >= filteredClaims.length) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: CircularProgressIndicator(),
                       ),
-                ],
+                    );
+                  }
+
+                  // Claim card
+                  final claim = filteredClaims[claimIndex];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _ClaimCard(
+                      claim: claim,
+                      onTap: () => context.push('/claims/${claim.claimId}'),
+                    ),
+                  );
+                },
               ),
             );
           },
@@ -141,8 +216,7 @@ class _ClaimsQueueScreenState extends ConsumerState<ClaimsQueueScreen> {
           error: (error, _) => GlassErrorState(
             title: 'Unable to load claims',
             message: error.toString(),
-            onRetry: () =>
-                ref.read(claimsQueueControllerProvider().notifier).refresh(),
+            onRetry: () => controller.refresh(),
           ),
         ),
       ),

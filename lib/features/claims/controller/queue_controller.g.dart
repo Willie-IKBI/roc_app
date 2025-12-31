@@ -13,14 +13,14 @@ part of 'queue_controller.dart';
 const claimsQueueControllerProvider = ClaimsQueueControllerFamily._();
 
 final class ClaimsQueueControllerProvider
-    extends $AsyncNotifierProvider<ClaimsQueueController, List<ClaimSummary>> {
+    extends $AsyncNotifierProvider<ClaimsQueueController, ClaimsQueueState> {
   const ClaimsQueueControllerProvider._({
     required ClaimsQueueControllerFamily super.from,
     required ClaimStatus? super.argument,
   }) : super(
          retry: null,
          name: r'claimsQueueControllerProvider',
-         isAutoDispose: false,
+         isAutoDispose: true,
          dependencies: null,
          $allTransitiveDependencies: null,
        );
@@ -51,15 +51,15 @@ final class ClaimsQueueControllerProvider
 }
 
 String _$claimsQueueControllerHash() =>
-    r'e20132992e46e5a97cac84d2e14842cee9a065f6';
+    r'70867e0c369fb52b282efd45541a625e654995b7';
 
 final class ClaimsQueueControllerFamily extends $Family
     with
         $ClassFamilyOverride<
           ClaimsQueueController,
-          AsyncValue<List<ClaimSummary>>,
-          List<ClaimSummary>,
-          FutureOr<List<ClaimSummary>>,
+          AsyncValue<ClaimsQueueState>,
+          ClaimsQueueState,
+          FutureOr<ClaimsQueueState>,
           ClaimStatus?
         > {
   const ClaimsQueueControllerFamily._()
@@ -68,7 +68,7 @@ final class ClaimsQueueControllerFamily extends $Family
         name: r'claimsQueueControllerProvider',
         dependencies: null,
         $allTransitiveDependencies: null,
-        isAutoDispose: false,
+        isAutoDispose: true,
       );
 
   ClaimsQueueControllerProvider call({ClaimStatus? status}) =>
@@ -79,22 +79,22 @@ final class ClaimsQueueControllerFamily extends $Family
 }
 
 abstract class _$ClaimsQueueController
-    extends $AsyncNotifier<List<ClaimSummary>> {
+    extends $AsyncNotifier<ClaimsQueueState> {
   late final _$args = ref.$arg as ClaimStatus?;
   ClaimStatus? get status => _$args;
 
-  FutureOr<List<ClaimSummary>> build({ClaimStatus? status});
+  FutureOr<ClaimsQueueState> build({ClaimStatus? status});
   @$mustCallSuper
   @override
   void runBuild() {
     final created = build(status: _$args);
     final ref =
-        this.ref as $Ref<AsyncValue<List<ClaimSummary>>, List<ClaimSummary>>;
+        this.ref as $Ref<AsyncValue<ClaimsQueueState>, ClaimsQueueState>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<AsyncValue<List<ClaimSummary>>, List<ClaimSummary>>,
-              AsyncValue<List<ClaimSummary>>,
+              AnyNotifier<AsyncValue<ClaimsQueueState>, ClaimsQueueState>,
+              AsyncValue<ClaimsQueueState>,
               Object?,
               Object?
             >;

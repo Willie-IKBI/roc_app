@@ -5,6 +5,7 @@ import '../../core/errors/domain_error.dart';
 import '../../core/logging/logger.dart';
 import '../../core/utils/result.dart';
 import '../../domain/models/claim_draft.dart';
+import '../../domain/models/paginated_result.dart';
 import '../../domain/value_objects/claim_enums.dart';
 import '../clients/supabase_client.dart';
 import '../models/address_row.dart';
@@ -22,19 +23,126 @@ class SupabaseClaimRemoteDataSource implements ClaimRemoteDataSource {
   final SupabaseClient _client;
 
   @override
+  Future<Result<PaginatedResult<ClaimSummaryRow>>> fetchQueuePage({
+    String? cursor,
+    int limit = 50,
+    ClaimStatus? status,
+  }) async {
+    try {
+      // Validate limit
+      final pageSize = limit.clamp(1, 100);
+
+      // Build query
+      var query = _client.from('v_claims_list').select('*');
+
+      // Apply status filter (server-side)
+      if (status != null) {
+        query = query.eq('status', status.value);
+      }
+
+      // Apply cursor (pagination)
+      // Cursor condition: (sla_started_at > cursor_sla) OR
+      //                   (sla_started_at = cursor_sla AND claim_id > cursor_id)
+      if (cursor != null) {
+        final parts = cursor.split('|');
+        if (parts.length == 2) {
+          final cursorSlaStartedAt = DateTime.parse(parts[0]);
+          final cursorClaimId = parts[1];
+
+          // PostgREST filter: (sla_started_at > cursor) OR
+          //                  (sla_started_at = cursor AND claim_id > cursor_id)
+          // Format: "column1.gt.value1,column1.eq.value1.column2.gt.value2"
+          query = query.or(
+            'sla_started_at.gt.$cursorSlaStartedAt,sla_started_at.eq.$cursorSlaStartedAt.claim_id.gt.$cursorClaimId',
+          );
+        }
+      }
+
+      // Apply ordering and limit (chain directly to avoid type mismatch)
+      final data = await query
+          .order('sla_started_at', ascending: true)
+          .order('claim_id', ascending: true)
+          .limit(pageSize + 1);
+
+      final rows = (data as List)
+          .cast<Map<String, dynamic>>()
+          .map(ClaimSummaryRow.fromJson)
+          .toList();
+
+      // Check if we have more data
+      final hasMore = rows.length > pageSize;
+      final items =
+          hasMore ? rows.take(pageSize).toList(growable: false) : rows;
+
+      // Generate next cursor from last item (even if no more data, for consistency)
+      String? nextCursor;
+      if (items.isNotEmpty) {
+        final lastItem = items.last;
+        nextCursor =
+            '${lastItem.slaStartedAt.toIso8601String()}|${lastItem.claimId}';
+      }
+
+      return Result.ok(PaginatedResult(
+        items: items,
+        nextCursor: nextCursor,
+        hasMore: hasMore,
+      ));
+    } on PostgrestException catch (err) {
+      AppLogger.error(
+        'Failed to fetch claims queue page (cursor: $cursor, status: $status)',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+      );
+      return Result.err(mapPostgrestException(err));
+    } catch (err, stackTrace) {
+      AppLogger.error(
+        'Unexpected error fetching claims queue page',
+        name: 'SupabaseClaimRemoteDataSource',
+        error: err,
+        stackTrace: stackTrace,
+      );
+      return Result.err(UnknownError(err));
+    }
+  }
+
+  @override
+  @Deprecated('Use fetchQueuePage instead. This method will be removed in a future version.')
   Future<Result<List<ClaimSummaryRow>>> fetchQueue({
     ClaimStatus? status,
   }) async {
     try {
+      // Safety limit: enforce maximum of 1000 claims even if more exist
+      // This prevents unbounded queries that could cause performance issues
+      const maxLimit = 1000;
+      
+      AppLogger.warn(
+        'fetchQueue() is deprecated and limited to $maxLimit claims. Use fetchQueuePage() for pagination. '
+        'This method will be removed in a future version.',
+        name: 'SupabaseClaimRemoteDataSource',
+      );
+      
       var query = _client.from('v_claims_list').select('*');
       if (status != null) {
         query = query.eq('status', status.value);
       }
-      final data = await query.order('sla_started_at', ascending: true);
+      final data = await query
+          .order('sla_started_at', ascending: true)
+          .limit(maxLimit);
+      
       final rows = (data as List)
           .cast<Map<String, dynamic>>()
           .map(ClaimSummaryRow.fromJson)
           .toList(growable: false);
+      
+      // Warn if we hit the limit (may indicate data was truncated)
+      if (rows.length >= maxLimit) {
+        AppLogger.warn(
+          'fetchQueue() returned $maxLimit claims (limit reached). Results may be truncated. '
+          'Migrate to fetchQueuePage() for proper pagination.',
+          name: 'SupabaseClaimRemoteDataSource',
+        );
+      }
+      
       return Result.ok(rows);
     } on PostgrestException catch (err) {
       AppLogger.error(
