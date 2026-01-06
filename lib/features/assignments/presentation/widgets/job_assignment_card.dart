@@ -84,10 +84,11 @@ class JobAssignmentCard extends StatelessWidget {
           // Card padding: 16px × 2 = 32px
           // Fixed elements: 12 (indicator) + 8 (spacing) + 4 (spacing) = 24px
           // Reserve minimum 100px for claim number
-          // Total fixed: 32 + 24 + 100 = 156px
+          // Badge padding: 16px × 2 = 32px (horizontal padding)
+          // Total fixed: 32 + 24 + 100 + 32 = 188px
           final badgeMaxWidth = constraints.maxWidth.isFinite
-              ? (constraints.maxWidth - 156).clamp(80.0, 180.0)
-              : 150.0;
+              ? (constraints.maxWidth - 188).clamp(60.0, 150.0)
+              : 120.0;
           
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,10 +118,12 @@ class JobAssignmentCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: DesignTokens.spaceXS),
-                  // Status badge - use Flexible with explicit width constraint
+                  // Status badge - use Flexible with ConstrainedBox to enforce max width
                   Flexible(
-                    child: SizedBox(
-                      width: badgeMaxWidth,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: badgeMaxWidth,
+                      ),
                       child: GlassBadge.custom(
                         label: claim.status.label,
                         color: statusColor,

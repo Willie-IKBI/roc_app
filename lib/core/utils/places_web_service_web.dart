@@ -52,7 +52,157 @@ class PlacesWebService {
 
   static Completer<void>? _loader;
 
-  static Future<void> ensureLoaded(String apiKey) {
+  static Future<void> _waitForRocPlaces() async {
+    if (!kIsWeb) return;
+    
+    print('[PlacesWebService] _waitForRocPlaces() called - starting diagnostic check...');
+    
+    // First check if the script has executed at all
+    try {
+      print('[PlacesWebService] Attempting to access window object...');
+      final window = globalContext['window'] as JSObject?;
+      print('[PlacesWebService] Window object: ${window != null ? "found" : "null"}');
+      
+      if (window != null) {
+        print('[PlacesWebService] Checking for _rocPlacesScriptExecuting flag...');
+        final scriptExecuting = window.getProperty('_rocPlacesScriptExecuting'.toJS);
+        final scriptStartTime = window.getProperty('_rocPlacesScriptStartTime'.toJS);
+        
+        print('[PlacesWebService] Flag check result: scriptExecuting=${scriptExecuting != null}, scriptStartTime=${scriptStartTime != null}');
+        
+        // Use print() to ensure it always shows, plus AppLogger for structured logging
+        if (scriptExecuting == null) {
+          print('[PlacesWebService] ERROR: rocPlaces script does not appear to have executed!');
+          print('[PlacesWebService] This means the JavaScript in web/index.html did not run. Check browser console for JavaScript errors.');
+          AppLogger.error(
+            'rocPlaces script does not appear to have executed. The script in web/index.html may not be running. Check browser console for errors.',
+            name: 'PlacesWebService',
+          );
+        } else {
+          final startTimeStr = scriptStartTime != null 
+              ? (scriptStartTime is JSNumber ? scriptStartTime.toDartDouble.toString() : scriptStartTime.toString())
+              : 'unknown';
+          print('[PlacesWebService] rocPlaces script has executed (flag found). Start time: $startTimeStr');
+          AppLogger.info(
+            'rocPlaces script has executed (flag found). Start time: $startTimeStr',
+            name: 'PlacesWebService',
+          );
+        }
+      } else {
+        print('[PlacesWebService] ERROR: Window is null when checking script execution!');
+        AppLogger.error(
+          'Window is null when checking rocPlaces script execution',
+          name: 'PlacesWebService',
+        );
+      }
+    } catch (e, stackTrace) {
+      print('[PlacesWebService] ERROR checking script execution flag: $e');
+      print('[PlacesWebService] Stack trace: $stackTrace');
+      AppLogger.error(
+        'Could not check script execution flag: $e',
+        name: 'PlacesWebService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
+    
+    int attempts = 0;
+    const maxAttempts = 50; // 5 seconds total
+    const pollInterval = Duration(milliseconds: 100);
+    
+    AppLogger.debug(
+      'Waiting for rocPlaces to become available...',
+      name: 'PlacesWebService',
+    );
+    
+    while (attempts < maxAttempts) {
+      await Future.delayed(pollInterval);
+      try {
+        final window = globalContext['window'] as JSObject?;
+        if (window != null) {
+          final rocPlacesCheck = window.getProperty('rocPlaces'.toJS);
+          
+          // Check if rocPlaces exists AND is a valid object (not null, not undefined)
+          if (rocPlacesCheck != null && rocPlacesCheck is JSObject) {
+            // Verify it has the expected methods
+            try {
+              final hasEnsureLoaded = (rocPlacesCheck as JSObject).getProperty('ensureLoaded'.toJS);
+              if (hasEnsureLoaded != null) {
+                print('[PlacesWebService] rocPlaces is valid and has ensureLoaded method');
+                AppLogger.debug(
+                  'rocPlaces available after $attempts attempts',
+                  name: 'PlacesWebService',
+                );
+                return;
+              } else {
+                print('[PlacesWebService] rocPlaces exists but missing ensureLoaded method');
+              }
+            } catch (e) {
+              print('[PlacesWebService] Error checking rocPlaces methods: $e');
+            }
+          } else if (rocPlacesCheck != null) {
+            print('[PlacesWebService] rocPlaces exists but is not a JSObject: ${rocPlacesCheck.runtimeType}');
+          }
+          
+          // Log diagnostic info every 10 attempts
+          if (attempts % 10 == 0) {
+            print('[PlacesWebService] Still waiting... rocPlaces=${rocPlacesCheck != null ? "exists" : "null/undefined"}');
+            final windowType = window.runtimeType;
+            AppLogger.debug(
+              'rocPlaces not available yet (attempt $attempts). Window type: $windowType',
+              name: 'PlacesWebService',
+            );
+          }
+        } else {
+          if (attempts % 10 == 0) {
+            print('[PlacesWebService] Window is null (attempt $attempts)');
+            AppLogger.debug(
+              'Window is null (attempt $attempts)',
+              name: 'PlacesWebService',
+            );
+          }
+        }
+      } catch (e) {
+        if (attempts % 10 == 0) {
+          print('[PlacesWebService] Error checking rocPlaces (attempt $attempts): $e');
+          AppLogger.debug(
+            'Error checking rocPlaces (attempt $attempts): $e',
+            name: 'PlacesWebService',
+          );
+        }
+      }
+      attempts++;
+    }
+    
+    // Final diagnostic check
+    try {
+      final window = globalContext['window'] as JSObject?;
+      if (window != null) {
+        final rocPlacesCheck = window.getProperty('rocPlaces'.toJS);
+        AppLogger.error(
+          'rocPlaces still not available after $maxAttempts attempts. Final check: ${rocPlacesCheck != null ? "exists" : "null"}',
+          name: 'PlacesWebService',
+        );
+      } else {
+        AppLogger.error(
+          'Window is null in final check',
+          name: 'PlacesWebService',
+        );
+      }
+    } catch (e) {
+      AppLogger.error(
+        'Error in final rocPlaces check: $e',
+        name: 'PlacesWebService',
+      );
+    }
+    
+    throw TimeoutException(
+      'rocPlaces did not become available within ${maxAttempts * 100}ms. Ensure web/index.html is loaded correctly. Check browser console for JavaScript errors.',
+      const Duration(milliseconds: maxAttempts * 100),
+    );
+  }
+
+  static Future<void> ensureLoaded(String apiKey) async {
     if (!kIsWeb) {
       AppLogger.debug(
         'ensureLoaded skipped: not running on web',
@@ -91,6 +241,19 @@ class PlacesWebService {
       );
     }
     
+    // Wait for rocPlaces to be available
+    try {
+      await _waitForRocPlaces();
+    } catch (e, stackTrace) {
+      AppLogger.error(
+        'rocPlaces not available after waiting: $e',
+        name: 'PlacesWebService',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return Future.error(StateError('rocPlaces not available: $e'));
+    }
+    
     _loader ??= Completer<void>();
     if (!_loader!.isCompleted) {
       AppLogger.debug(
@@ -108,7 +271,7 @@ class PlacesWebService {
         if (!_loader!.isCompleted) {
           _loader!.complete();
         }
-      }).toJS;
+      }).toJS as JSFunction;
       
       final onError = ((JSString errorMessage) {
         final errorStr = errorMessage.toDart;
@@ -148,7 +311,7 @@ Please check Google Cloud Console:
         if (!_loader!.isCompleted) {
           _loader!.completeError(error);
         }
-      });
+      }).toJS as JSFunction;
       
       // Add timeout to prevent hanging
       Future.delayed(const Duration(seconds: 15), () {
@@ -169,7 +332,7 @@ Please check Google Cloud Console:
       
       // Call JavaScript function with callbacks
       try {
-        rocPlaces.ensureLoaded(apiKey, onSuccess as JSFunction, onError as JSFunction);
+        rocPlaces.ensureLoaded(apiKey, onSuccess, onError);
       } catch (e, stackTrace) {
         AppLogger.error(
           'Error calling rocPlaces.ensureLoaded: $e',
@@ -270,7 +433,7 @@ Please check Google Cloud Console:
             completer.completeError(e);
           }
         }
-      });
+      }).toJS;
       
       final onReject = ((JSAny? error) {
         try {
@@ -304,7 +467,7 @@ Please check Google Cloud Console:
             completer.completeError(e);
           }
         }
-      });
+      }).toJS;
       
       // Call .then() with positional arguments (JavaScript Promise API)
       // Note: JavaScript Promise.then() takes two positional arguments, not named parameters
@@ -376,6 +539,10 @@ Please check Google Cloud Console:
     
     // Helper function to process results
     void processResult(JSAny result) {
+      // Log immediately at the very start
+      print('[PlacesWebService] processResult called with result: $result');
+      print('[PlacesWebService] result type: ${result.runtimeType}');
+      
       try {
         AppLogger.debug(
           'Autocomplete result received, processing results',
@@ -386,49 +553,40 @@ Please check Google Cloud Console:
           name: 'PlacesWebService',
         );
         
-        // Convert JSAny to Dart
-        final dartResult = _jsToDart(result);
-        AppLogger.debug(
-          'Result type: ${dartResult.runtimeType}, is List: ${dartResult is List}, is Iterable: ${dartResult is Iterable}',
-          name: 'PlacesWebService',
-        );
-        
-        // Handle different possible result types
-        List<dynamic> dartified;
-        if (dartResult == null) {
-          AppLogger.warn(
-            'Autocomplete returned null result',
-            name: 'PlacesWebService',
-          );
-          if (!completer.isCompleted) {
-            completer.complete(const []);
+        // Check if result is a JSArray - if so, process it directly without full conversion
+        List<dynamic> itemsToProcess;
+        if (result is JSArray) {
+          print('[PlacesWebService] Result is JSArray, processing directly');
+          itemsToProcess = [];
+          final length = result.length;
+          print('[PlacesWebService] JSArray length: $length');
+          for (var i = 0; i < length; i++) {
+            final item = result[i];
+            itemsToProcess.add(item);
           }
-          return;
-        } else if (dartResult is List) {
-          dartified = dartResult;
-          AppLogger.debug(
-            'Result is already a Dart List',
-            name: 'PlacesWebService',
-          );
-        } else if (dartResult is Iterable) {
-          dartified = dartResult.toList();
-          AppLogger.debug(
-            'Result is Iterable, converted to List',
-            name: 'PlacesWebService',
-          );
         } else {
-          // Try to cast as List (might be a JavaScript array)
-          try {
-            dartified = (dartResult as List<dynamic>);
-            AppLogger.debug(
-              'Result cast to List<dynamic>',
+          // Convert JSAny to Dart for non-array results
+          print('[PlacesWebService] Converting JSAny to Dart...');
+          final dartResult = _jsToDart(result);
+          print('[PlacesWebService] Conversion complete - type: ${dartResult.runtimeType}, is List: ${dartResult is List}');
+          
+          if (dartResult == null) {
+            AppLogger.warn(
+              'Autocomplete returned null result',
               name: 'PlacesWebService',
             );
-          } catch (e) {
+            if (!completer.isCompleted) {
+              completer.complete(const []);
+            }
+            return;
+          } else if (dartResult is List) {
+            itemsToProcess = dartResult;
+          } else if (dartResult is Iterable) {
+            itemsToProcess = dartResult.toList();
+          } else {
             AppLogger.error(
-              'Failed to convert result to List: $e',
+              'Failed to convert result to List: result type is ${dartResult.runtimeType}',
               name: 'PlacesWebService',
-              error: e,
             );
             if (!completer.isCompleted) {
               completer.complete(const []);
@@ -437,12 +595,10 @@ Please check Google Cloud Console:
           }
         }
         
-        AppLogger.debug(
-          'Dartified list length: ${dartified.length}',
-          name: 'PlacesWebService',
-        );
+        print('[PlacesWebService] Starting to process ${itemsToProcess.length} items');
         
-        if (dartified.isEmpty) {
+        if (itemsToProcess.isEmpty) {
+          print('[PlacesWebService] WARNING: Autocomplete returned empty list');
           AppLogger.warn(
             'Autocomplete returned empty list',
             name: 'PlacesWebService',
@@ -454,57 +610,76 @@ Please check Google Cloud Console:
         }
         
         // Manually convert JavaScript objects to Dart Maps
-        // JavaScript objects from package:js/js.dart are LegacyJavaScriptObject instances
-        // and cannot be converted using Map.from() - we need to access properties directly
+        // Access properties directly using JS interop for best reliability
         final mapped = <Map<String, dynamic>>[];
-        for (var i = 0; i < dartified.length; i++) {
-          final item = dartified[i];
-          AppLogger.debug(
-            'Processing item $i: $item (type: ${item.runtimeType})',
-            name: 'PlacesWebService',
-          );
+        for (var i = 0; i < itemsToProcess.length; i++) {
+          final item = itemsToProcess[i];
+          print('[PlacesWebService] Processing item $i: type=${item.runtimeType}');
           
           try {
-            final jsObj = item is JSObject ? item : (item as JSObject);
-            
-            // Access properties using JS interop
             dynamic description;
             dynamic placeId;
             
-            try {
-              final descProp = jsObj.getProperty('description'.toJS);
-              final placeIdProp = jsObj.getProperty('place_id'.toJS);
-              description = descProp != null ? _jsToDart(descProp) : null;
-              placeId = placeIdProp != null ? _jsToDart(placeIdProp) : null;
-            } catch (e) {
-              AppLogger.debug(
-                'Property access failed for item $i: $e',
-                name: 'PlacesWebService',
-              );
+            // First, try to access as JSObject directly (most reliable)
+            if (item is JSObject) {
+              print('[PlacesWebService] Item $i - is JSObject, accessing properties directly');
+              try {
+                final descProp = (item as JSObject).getProperty('description'.toJS);
+                final placeIdProp = (item as JSObject).getProperty('place_id'.toJS);
+                description = descProp != null ? _jsToDart(descProp) : null;
+                placeId = placeIdProp != null ? _jsToDart(placeIdProp) : null;
+                print('[PlacesWebService] Item $i - JSObject access: description=${description != null ? "found: $description" : "null"}, placeId=${placeId != null ? "found: $placeId" : "null"}');
+              } catch (e) {
+                print('[PlacesWebService] Item $i - JSObject property access failed: $e');
+              }
+            }
+            
+            // If JSObject access didn't work, try as Map
+            if ((description == null || placeId == null) && item is Map) {
+              print('[PlacesWebService] Item $i - trying as Map, keys: ${(item as Map).keys}');
+              final mapItem = item as Map;
+              description = description ?? mapItem['description'];
+              placeId = placeId ?? (mapItem['place_id'] ?? mapItem['placeId']);
+              
+              // Try iterating keys if direct access failed
+              if ((description == null || placeId == null) && mapItem.keys.isNotEmpty) {
+                print('[PlacesWebService] Item $i - Direct Map access failed, trying keys iteration');
+                for (final key in mapItem.keys) {
+                  final keyStr = key.toString().toLowerCase();
+                  if (keyStr == 'description' && description == null) {
+                    description = mapItem[key];
+                    print('[PlacesWebService] Item $i - Found description via key iteration: $description');
+                  }
+                  if ((keyStr == 'place_id' || keyStr == 'placeid') && placeId == null) {
+                    placeId = mapItem[key];
+                    print('[PlacesWebService] Item $i - Found placeId via key iteration: $placeId');
+                  }
+                }
+              }
             }
             
             // Convert to strings
             final descriptionStr = description?.toString() ?? '';
             final placeIdStr = placeId?.toString() ?? '';
             
-            AppLogger.debug(
-              'Item $i extracted - description: "$descriptionStr", place_id: "$placeIdStr"',
-              name: 'PlacesWebService',
-            );
+            print('[PlacesWebService] Item $i - Final values: description="$descriptionStr", place_id="$placeIdStr"');
             
             if (descriptionStr.isEmpty || placeIdStr.isEmpty) {
+              print('[PlacesWebService] Item $i - SKIPPED: missing required fields');
               AppLogger.warn(
-                'Item $i missing required fields - skipping',
+                'Item $i missing required fields - description: "$descriptionStr", place_id: "$placeIdStr"',
                 name: 'PlacesWebService',
               );
               continue;
             }
             
+            print('[PlacesWebService] Item $i - ADDED to mapped list');
             mapped.add(<String, dynamic>{
               'description': descriptionStr,
               'place_id': placeIdStr,
             });
           } catch (error) {
+            print('[PlacesWebService] Item $i - ERROR: $error');
             AppLogger.error(
               'Failed to convert item $i: $error',
               name: 'PlacesWebService',
@@ -514,14 +689,22 @@ Please check Google Cloud Console:
           }
         }
         
+        print('[PlacesWebService] Finished processing - mapped ${mapped.length} items from ${itemsToProcess.length} total');
+        
+        print('[PlacesWebService] Autocomplete returned ${mapped.length} suggestions after conversion (from ${itemsToProcess.length} items)');
         AppLogger.debug(
-          'Autocomplete returned ${mapped.length} suggestions after conversion (from ${dartified.length} items)',
+          'Autocomplete returned ${mapped.length} suggestions after conversion (from ${itemsToProcess.length} items)',
           name: 'PlacesWebService',
         );
         if (!completer.isCompleted) {
+          print('[PlacesWebService] Completing completer with ${mapped.length} results');
           completer.complete(mapped);
+          print('[PlacesWebService] Completer completed successfully');
+        } else {
+          print('[PlacesWebService] WARNING: Completer already completed!');
         }
       } catch (e, stackTrace) {
+        print('[PlacesWebService] ERROR in processResult: $e');
         AppLogger.error(
           'Error processing autocomplete result: $e',
           name: 'PlacesWebService',
@@ -534,13 +717,59 @@ Please check Google Cloud Console:
       }
     }
     
-    // Create callbacks using toJS
-    final onSuccess = ((JSAny result) {
-      processResult(result);
-    }).toJS;
+    // Create callbacks using toJS - ensure it's a proper function
+    // Store in a variable to prevent garbage collection
+    final onSuccessFunc = ((JSAny? result) {
+      // Log immediately at the start - before any try/catch
+      print('[PlacesWebService] CALLBACK INVOKED - result: $result');
+      print('[PlacesWebService] CALLBACK - result type: ${result.runtimeType}');
+      print('[PlacesWebService] CALLBACK - result is null: ${result == null}');
+      
+      try {
+        AppLogger.debug(
+          'onSuccess callback invoked with result type: ${result.runtimeType}',
+          name: 'PlacesWebService',
+        );
+        
+        if (result == null) {
+          print('[PlacesWebService] ERROR: result is null!');
+          AppLogger.error(
+            'onSuccess callback received null result',
+            name: 'PlacesWebService',
+          );
+          if (!completer.isCompleted) {
+            completer.completeError(StateError('Autocomplete returned null result'));
+          }
+          return;
+        }
+        
+        print('[PlacesWebService] Calling processResult...');
+        processResult(result);
+        print('[PlacesWebService] processResult completed');
+      } catch (e, stackTrace) {
+        print('[PlacesWebService] ERROR in onSuccess callback: $e');
+        print('[PlacesWebService] Stack trace: $stackTrace');
+        AppLogger.error(
+          'Error in onSuccess callback: $e',
+          name: 'PlacesWebService',
+          error: e,
+          stackTrace: stackTrace,
+        );
+        if (!completer.isCompleted) {
+          completer.completeError(StateError('Callback error: $e'));
+        }
+      }
+    });
     
-    final onError = ((JSString errorMessage) {
-      final errorStr = errorMessage.toDart;
+    // Convert to JS and ensure it's callable
+    final onSuccessJS = onSuccessFunc.toJS;
+    final onSuccess = onSuccessJS as JSFunction;
+    
+    // Store reference to prevent GC (keep it alive)
+    final onSuccessRef = onSuccessJS;
+    
+    final onError = ((JSString? errorMessage) {
+      final errorStr = (errorMessage?.toDart) ?? 'Unknown error';
       final errorStrLower = errorStr.toLowerCase();
       
       // Provide helpful error messages for common Google Console issues
@@ -599,7 +828,7 @@ This might indicate:
       if (!completer.isCompleted) {
         completer.completeError(error);
       }
-    });
+    }).toJS;
     
     // Add timeout to prevent hanging
     Future.delayed(const Duration(seconds: 10), () {
@@ -620,10 +849,19 @@ This might indicate:
     // Call JavaScript function with callbacks
     try {
       AppLogger.debug(
-        'Calling JavaScript autocomplete function',
+        'Calling JavaScript autocomplete function with query: $query',
         name: 'PlacesWebService',
       );
-      rocPlaces.autocomplete(query, onSuccess as JSFunction, onError as JSFunction);
+      AppLogger.debug(
+        'onSuccess callback type: ${onSuccess.runtimeType}, onError callback type: ${onError.runtimeType}',
+        name: 'PlacesWebService',
+      );
+      // Cast to JSFunction as expected by external function
+      rocPlaces.autocomplete(
+        query, 
+        onSuccess as JSFunction, 
+        onError as JSFunction,
+      );
     } catch (e, stackTrace) {
       AppLogger.error(
         'Error calling rocPlaces.autocomplete: $e',
@@ -768,7 +1006,7 @@ This might indicate:
         'Calling reverseGeocode for coordinates: $lat, $lng',
         name: 'PlacesWebService',
       );
-      rocPlaces.reverseGeocode(lat, lng, onSuccess as JSFunction, onError as JSFunction);
+      rocPlaces.reverseGeocode(lat, lng, onSuccess, onError);
     } catch (e, stackTrace) {
       AppLogger.error(
         'Error calling rocPlaces.reverseGeocode: $e',
@@ -902,7 +1140,7 @@ Please try selecting the address again.
       if (!completer.isCompleted) {
         completer.completeError(error);
       }
-    });
+    }).toJS;
     
     // Add timeout to prevent hanging
     Future.delayed(const Duration(seconds: 10), () {
@@ -926,7 +1164,7 @@ Please try selecting the address again.
         'Fetching place details for placeId: $placeId',
         name: 'PlacesWebService',
       );
-      rocPlaces.placeDetails(placeId, onSuccess as JSFunction, onError as JSFunction);
+      rocPlaces.placeDetails(placeId, onSuccess, onError);
     } catch (e, stackTrace) {
       AppLogger.error(
         'Error calling rocPlaces.placeDetails: $e',

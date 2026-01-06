@@ -17,8 +17,8 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
   @override
   Future<Result<List<DailyClaimReportRow>>> fetchDailyReports({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     int limit = 90,
   }) async {
     try {
@@ -29,10 +29,13 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         'claim_date, claims_captured, avg_minutes_to_first_contact, compliant_claims, contacted_claims',
       );
 
-      // Date range is required
-      query = query
-          .gte('claim_date', startDate.toIso8601String())
-          .lte('claim_date', endDate.toIso8601String());
+      // Only apply date filters if provided
+      if (startDate != null) {
+        query = query.gte('claim_date', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('claim_date', endDate.toIso8601String());
+      }
 
       final response = await query.order('claim_date', ascending: false).limit(pageSize);
 
@@ -73,32 +76,17 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
   @override
   Future<Result<PaginatedResult<AgentPerformanceReportRow>>> fetchAgentPerformanceReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     try {
-      // Try RPC first (if it exists and supports date range)
-      try {
-        final response = await _client.rpc('get_agent_performance_report').select();
-        final rows = (response as List<dynamic>)
-            .map(
-              (row) => AgentPerformanceReportRow.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(growable: false);
-        // RPC doesn't support pagination, return all results
-        return Result.ok(PaginatedResult(
-          items: rows,
-          nextCursor: null,
-          hasMore: false,
-        ));
-      } on PostgrestException catch (_) {
-        // RPC doesn't exist, fall back to paginated direct query
-      }
-
+      AppLogger.debug(
+        'fetchAgentPerformanceReportPage: startDate=${startDate?.toIso8601String() ?? "null"}, endDate=${endDate?.toIso8601String() ?? "null"}, cursor=$cursor',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
+      // Use direct query - date range is optional
       return _fetchAgentPerformanceDirectPage(
         startDate: startDate,
         endDate: endDate,
@@ -117,24 +105,28 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
   }
 
   Future<Result<PaginatedResult<AgentPerformanceReportRow>>> _fetchAgentPerformanceDirectPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     try {
       // Validate and enforce limit
       final pageSize = limit.clamp(1, 500);
-      final startDateStr = startDate.toIso8601String();
-      final endDateStr = endDate.toIso8601String();
 
       // Fetch claims with agent info (paginated)
+      // Note: We don't filter out null agent_id here - we'll handle it in processing
       var query = _client
           .from('claims')
-          .select('id, agent_id, sla_started_at, status, closed_at')
-          .not('agent_id', 'is', null)
-          .gte('created_at', startDateStr)  // Date range required
-          .lte('created_at', endDateStr);    // Date range required
+          .select('id, agent_id, sla_started_at, status, closed_at');
+
+      // Only apply date filters if provided
+      if (startDate != null) {
+        query = query.gte('created_at', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('created_at', endDate.toIso8601String());
+      }
 
       // Apply cursor for pagination
       if (cursor != null && cursor.isNotEmpty) {
@@ -145,6 +137,11 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
       final claimsResponse = await query
           .order('id', ascending: true)
           .limit(pageSize + 1);
+
+      AppLogger.debug(
+        '_fetchAgentPerformanceDirectPage: fetched ${claimsResponse.length} raw claims from query (date range: ${startDate?.toIso8601String() ?? "all"} to ${endDate?.toIso8601String() ?? "all"})',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
 
       // Check if we have more data
       final hasMore = (claimsResponse as List<dynamic>).length > pageSize;
@@ -217,13 +214,38 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
       // Aggregate by agent
       final agentMap = <String, AgentPerformanceData>{};
+      int claimsProcessed = 0;
+      int claimsSkipped = 0;
 
       for (final claim in claims) {
         final claimMap = claim as Map<String, dynamic>;
-        final agentId = claimMap['agent_id'] as String;
-        final claimId = claimMap['id'] as String;
-        final slaStartedAt = DateTime.parse(claimMap['sla_started_at'] as String);
-        final status = claimMap['status'] as String;
+        final claimId = claimMap['id'] as String?;
+        if (claimId == null) {
+          claimsSkipped++;
+          continue; // Skip claims without id
+        }
+        
+        // Handle null agent_id - use 'unassigned' as fallback
+        final agentId = claimMap['agent_id'] as String? ?? 'unassigned';
+        
+        // Handle null sla_started_at - use created_at or current time as fallback
+        final slaStartedAtStr = claimMap['sla_started_at'] as String?;
+        DateTime slaStartedAt;
+        if (slaStartedAtStr != null) {
+          try {
+            slaStartedAt = DateTime.parse(slaStartedAtStr);
+          } catch (e) {
+            AppLogger.warn(
+              'Failed to parse sla_started_at for claim $claimId: $e, using current time',
+              name: 'SupabaseReportingRemoteDataSource',
+            );
+            slaStartedAt = DateTime.now().toUtc();
+          }
+        } else {
+          // No SLA started - use current time as fallback for calculations
+          slaStartedAt = DateTime.now().toUtc();
+        }
+        final status = claimMap['status'] as String? ?? 'new';
         final closedAt = claimMap['closed_at'] != null
             ? DateTime.parse(claimMap['closed_at'] as String)
             : null;
@@ -261,11 +283,19 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
           }
           data.totalContacts++;
         }
+        claimsProcessed++;
       }
+
+      AppLogger.debug(
+        '_fetchAgentPerformanceDirectPage: processed $claimsProcessed claims, skipped $claimsSkipped claims, found ${agentMap.length} unique agents',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
 
       // Convert to rows
       final rows = agentMap.values.map((data) {
-        final agentName = profilesMap[data.agentId] ?? 'Unknown';
+        final agentName = data.agentId == 'unassigned' 
+            ? 'Unassigned' 
+            : (profilesMap[data.agentId] ?? 'Unknown');
         return AgentPerformanceReportRow(
           agentId: data.agentId,
           agentName: agentName,
@@ -294,6 +324,11 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         );
       }
 
+      AppLogger.debug(
+        '_fetchAgentPerformanceDirectPage: returning ${rows.length} agent performance rows',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
+
       return Result.ok(PaginatedResult(
         items: rows,
         nextCursor: nextCursor,
@@ -319,32 +354,13 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
   @override
   Future<Result<PaginatedResult<StatusDistributionReportRow>>> fetchStatusDistributionReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     try {
-      // Try RPC first (if it exists and supports date range)
-      try {
-        final response = await _client.rpc('get_status_distribution_report').select();
-        final rows = (response as List<dynamic>)
-            .map(
-              (row) => StatusDistributionReportRow.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(growable: false);
-        // RPC doesn't support pagination, return all results
-        return Result.ok(PaginatedResult(
-          items: rows,
-          nextCursor: null,
-          hasMore: false,
-        ));
-      } on PostgrestException catch (_) {
-        // RPC doesn't exist, fall back to paginated direct query
-      }
-
+      // Use direct query - date range is optional
       return _fetchStatusDistributionDirectPage(
         startDate: startDate,
         endDate: endDate,
@@ -363,23 +379,32 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
   }
 
   Future<Result<PaginatedResult<StatusDistributionReportRow>>> _fetchStatusDistributionDirectPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     try {
       // Validate and enforce limit
       final pageSize = limit.clamp(1, 500);
-      final startDateStr = startDate.toIso8601String();
-      final endDateStr = endDate.toIso8601String();
 
       // Fetch claims (paginated)
       var query = _client
           .from('claims')
-          .select('id, status, created_at, closed_at')
-          .gte('created_at', startDateStr)  // Date range required
-          .lte('created_at', endDateStr);    // Date range required
+          .select('id, status, created_at, closed_at');
+
+      // Only apply date filters if provided
+      if (startDate != null) {
+        query = query.gte('created_at', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('created_at', endDate.toIso8601String());
+      }
+
+      AppLogger.debug(
+        '_fetchStatusDistributionDirectPage: querying claims from ${startDate?.toIso8601String() ?? "all"} to ${endDate?.toIso8601String() ?? "all"}',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
 
       // Apply cursor for pagination
       if (cursor != null && cursor.isNotEmpty) {
@@ -397,6 +422,11 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
           ? (response as List<dynamic>).take(pageSize).toList()
           : (response as List<dynamic>);
 
+      AppLogger.debug(
+        '_fetchStatusDistributionDirectPage: fetched ${claims.length} claims from query',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
+
       // Generate next cursor from last claim
       String? nextCursor;
       if (hasMore && claims.isNotEmpty) {
@@ -410,8 +440,10 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
       for (final row in claims) {
         final claimMap = row as Map<String, dynamic>;
-        final status = claimMap['status'] as String;
-        final createdAt = DateTime.parse(claimMap['created_at'] as String);
+        final status = claimMap['status'] as String? ?? 'new';
+        final createdAtStr = claimMap['created_at'] as String?;
+        if (createdAtStr == null) continue; // Skip claims without created_at
+        final createdAt = DateTime.parse(createdAtStr);
         final closedAt = claimMap['closed_at'] != null
             ? DateTime.parse(claimMap['closed_at'] as String)
             : null;
@@ -430,6 +462,12 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
       }
 
       final total = statusMap.values.fold<int>(0, (sum, data) => sum + data.count);
+      
+      AppLogger.debug(
+        '_fetchStatusDistributionDirectPage: processed ${claims.length} claims, found ${statusMap.length} unique statuses, total count: $total',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
+      
       final rows = statusMap.values.map((data) {
         return StatusDistributionReportRow(
           status: data.status,
@@ -473,32 +511,13 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
   @override
   Future<Result<PaginatedResult<DamageCauseReportRow>>> fetchDamageCauseReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     try {
-      // Try RPC first (if it exists and supports date range)
-      try {
-        final response = await _client.rpc('get_damage_cause_report').select();
-        final rows = (response as List<dynamic>)
-            .map(
-              (row) => DamageCauseReportRow.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(growable: false);
-        // RPC doesn't support pagination, return all results
-        return Result.ok(PaginatedResult(
-          items: rows,
-          nextCursor: null,
-          hasMore: false,
-        ));
-      } on PostgrestException catch (_) {
-        // RPC doesn't exist, fall back to paginated direct query
-      }
-
+      // Use direct query - date range is optional
       return _fetchDamageCauseDirectPage(
         startDate: startDate,
         endDate: endDate,
@@ -517,23 +536,32 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
   }
 
   Future<Result<PaginatedResult<DamageCauseReportRow>>> _fetchDamageCauseDirectPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     try {
       // Validate and enforce limit
       final pageSize = limit.clamp(1, 500);
-      final startDateStr = startDate.toIso8601String();
-      final endDateStr = endDate.toIso8601String();
 
       // Fetch claims (paginated)
       var query = _client
           .from('claims')
-          .select('id, damage_cause, created_at, closed_at')
-          .gte('created_at', startDateStr)  // Date range required
-          .lte('created_at', endDateStr);    // Date range required
+          .select('id, damage_cause, created_at, closed_at');
+
+      // Only apply date filters if provided
+      if (startDate != null) {
+        query = query.gte('created_at', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('created_at', endDate.toIso8601String());
+      }
+
+      AppLogger.debug(
+        '_fetchDamageCauseDirectPage: querying claims from ${startDate?.toIso8601String() ?? "all"} to ${endDate?.toIso8601String() ?? "all"}',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
 
       // Apply cursor for pagination
       if (cursor != null && cursor.isNotEmpty) {
@@ -551,6 +579,11 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
           ? (response as List<dynamic>).take(pageSize).toList()
           : (response as List<dynamic>);
 
+      AppLogger.debug(
+        '_fetchDamageCauseDirectPage: fetched ${claims.length} claims from query',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
+
       // Generate next cursor from last claim
       String? nextCursor;
       if (hasMore && claims.isNotEmpty) {
@@ -563,8 +596,10 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
       for (final row in claims) {
         final claimMap = row as Map<String, dynamic>;
-        final cause = claimMap['damage_cause'] as String;
-        final createdAt = DateTime.parse(claimMap['created_at'] as String);
+        final cause = claimMap['damage_cause'] as String? ?? 'other';
+        final createdAtStr = claimMap['created_at'] as String?;
+        if (createdAtStr == null) continue; // Skip claims without created_at
+        final createdAt = DateTime.parse(createdAtStr);
         final closedAt = claimMap['closed_at'] != null
             ? DateTime.parse(claimMap['closed_at'] as String)
             : null;
@@ -580,6 +615,12 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
       }
 
       final total = causeMap.values.fold<int>(0, (sum, data) => sum + data.count);
+      
+      AppLogger.debug(
+        '_fetchDamageCauseDirectPage: processed ${claims.length} claims, found ${causeMap.length} unique damage causes, total count: $total',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
+      
       final rows = causeMap.values.map((data) {
         return DamageCauseReportRow(
           damageCause: data.cause,
@@ -622,35 +663,14 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
   @override
   Future<Result<PaginatedResult<GeographicReportRow>>> fetchGeographicReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? groupBy,
     String? cursor,
     int limit = 100,
   }) async {
     try {
-      // Try RPC first (if it exists and supports date range)
-      try {
-        final response = await _client.rpc('get_geographic_report', params: {
-          'group_by': groupBy ?? 'province',
-        }).select();
-        final rows = (response as List<dynamic>)
-            .map(
-              (row) => GeographicReportRow.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(growable: false);
-        // RPC doesn't support pagination, return all results
-        return Result.ok(PaginatedResult(
-          items: rows,
-          nextCursor: null,
-          hasMore: false,
-        ));
-      } on PostgrestException catch (_) {
-        // RPC doesn't exist, fall back to paginated direct query
-      }
-
+      // Use direct query - date range is optional
       return _fetchGeographicDirectPage(
         startDate: startDate,
         endDate: endDate,
@@ -670,8 +690,8 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
   }
 
   Future<Result<PaginatedResult<GeographicReportRow>>> _fetchGeographicDirectPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? groupBy,
     String? cursor,
     int limit = 100,
@@ -679,8 +699,6 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
     try {
       // Validate and enforce limit
       final pageSize = limit.clamp(1, 500);
-      final startDateStr = startDate.toIso8601String();
-      final endDateStr = endDate.toIso8601String();
       final groupByField = groupBy ?? 'province';
 
       // Fetch claims (paginated)
@@ -689,9 +707,20 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
           .select('''
             id,
             address:addresses!claims_address_id_fkey(province, city, suburb, lat, lng)
-          ''')
-          .gte('created_at', startDateStr)  // Date range required
-          .lte('created_at', endDateStr);    // Date range required
+          ''');
+
+      // Only apply date filters if provided
+      if (startDate != null) {
+        query = query.gte('created_at', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        query = query.lte('created_at', endDate.toIso8601String());
+      }
+
+      AppLogger.debug(
+        '_fetchGeographicDirectPage: querying claims from ${startDate?.toIso8601String() ?? "all"} to ${endDate?.toIso8601String() ?? "all"}, groupBy: $groupByField',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
 
       // Apply cursor for pagination
       if (cursor != null && cursor.isNotEmpty) {
@@ -717,10 +746,22 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
       }
 
       final geoMap = <String, GeographicData>{};
+      int claimsWithAddress = 0;
+      int claimsWithoutAddress = 0;
 
       for (final row in claims) {
         final address = row['address'] as Map<String, dynamic>?;
-        if (address == null) continue;
+        if (address == null) {
+          // Include claims without addresses as "Unknown Location"
+          final data = geoMap.putIfAbsent(
+            'Unknown Location',
+            () => GeographicData(province: null, city: null, suburb: null),
+          );
+          data.claimCount++;
+          claimsWithoutAddress++;
+          continue;
+        }
+        claimsWithAddress++;
 
         final province = address['province'] as String?;
         final city = address['city'] as String?;
@@ -768,6 +809,12 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
       }
 
       final total = geoMap.values.fold<int>(0, (sum, data) => sum + data.claimCount);
+      
+      AppLogger.debug(
+        '_fetchGeographicDirectPage: processed ${claims.length} claims ($claimsWithAddress with address, $claimsWithoutAddress without), found ${geoMap.length} unique locations, total count: $total',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
+      
       final rows = geoMap.values.map((data) {
         return GeographicReportRow(
           province: data.province,
@@ -813,32 +860,13 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
   @override
   Future<Result<PaginatedResult<InsurerPerformanceReportRow>>> fetchInsurerPerformanceReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     try {
-      // Try RPC first (if it exists and supports date range)
-      try {
-        final response = await _client.rpc('get_insurer_performance_report').select();
-        final rows = (response as List<dynamic>)
-            .map(
-              (row) => InsurerPerformanceReportRow.fromJson(
-                Map<String, dynamic>.from(row as Map),
-              ),
-            )
-            .toList(growable: false);
-        // RPC doesn't support pagination, return all results
-        return Result.ok(PaginatedResult(
-          items: rows,
-          nextCursor: null,
-          hasMore: false,
-        ));
-      } on PostgrestException catch (_) {
-        // RPC doesn't exist, fall back to paginated direct query
-      }
-
+      // Use direct query - date range is optional
       return _fetchInsurerPerformanceDirectPage(
         startDate: startDate,
         endDate: endDate,
@@ -857,46 +885,57 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
   }
 
   Future<Result<PaginatedResult<InsurerPerformanceReportRow>>> _fetchInsurerPerformanceDirectPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     try {
       // Validate and enforce limit
       final pageSize = limit.clamp(1, 500);
-      final startDateStr = startDate.toIso8601String();
-      final endDateStr = endDate.toIso8601String();
 
-      // Fetch insurers (paginated by insurer_id)
-      var query = _client
-          .from('insurers')
-          .select('id, name');
+      AppLogger.debug(
+        'Fetching insurer performance: startDate=${startDate?.toIso8601String() ?? "null"}, endDate=${endDate?.toIso8601String() ?? "null"}, cursor=$cursor, limit=$pageSize',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
 
-      // Apply cursor for pagination (by insurer_id)
+      // Query claims first, then group by insurer
+      var claimsQuery = _client
+          .from('claims')
+          .select('id, insurer_id, status, created_at, closed_at, damage_cause');
+
+      // Only apply date filters if provided
+      if (startDate != null) {
+        claimsQuery = claimsQuery.gte('created_at', startDate.toIso8601String());
+      }
+      if (endDate != null) {
+        claimsQuery = claimsQuery.lte('created_at', endDate.toIso8601String());
+      }
+
+      // Apply cursor for pagination (by insurer_id) - must be before order
       if (cursor != null && cursor.isNotEmpty) {
-        query = query.gt('id', cursor);
+        claimsQuery = claimsQuery.gt('insurer_id', cursor);
       }
 
-      // Fetch limit + 1 to detect if more data exists
-      final insurersResponse = await query
-          .order('id', ascending: true)
-          .limit(pageSize + 1);
+      // Apply ordering after filters
+      final orderedQuery = claimsQuery
+          .order('insurer_id', ascending: true)
+          .order('id', ascending: true);
 
-      // Check if we have more data
-      final hasMore = (insurersResponse as List<dynamic>).length > pageSize;
-      final insurers = hasMore
-          ? (insurersResponse as List<dynamic>).take(pageSize).toList()
-          : (insurersResponse as List<dynamic>);
+      // Fetch a larger batch of claims to ensure we get enough unique insurers
+      // We'll process claims and group by insurer, then paginate the results
+      final claimsResponse = await orderedQuery.limit(pageSize * 10); // Fetch more claims to get enough insurers
 
-      // Generate next cursor from last insurer
-      String? nextCursor;
-      if (hasMore && insurers.isNotEmpty) {
-        final lastInsurer = insurers.last as Map<String, dynamic>;
-        nextCursor = lastInsurer['id'] as String;
-      }
+      AppLogger.debug(
+        'Fetched ${claimsResponse.length} claims from database',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
 
-      if (insurers.isEmpty) {
+      if (claimsResponse.isEmpty) {
+        AppLogger.warn(
+          'No claims found for date range ${startDate?.toIso8601String() ?? "all"} to ${endDate?.toIso8601String() ?? "all"}',
+          name: 'SupabaseReportingRemoteDataSource',
+        );
         return Result.ok(PaginatedResult(
           items: [],
           nextCursor: null,
@@ -904,46 +943,54 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         ));
       }
 
-      // Fetch claims for these insurers with date range filter
-      final insurerIds = insurers.map((i) => (i as Map<String, dynamic>)['id'] as String).toList();
-      
-      // Use IN filter for multiple insurer IDs (more efficient than OR)
-      // Use report pagination pageSize for claims fetching (bounded by insurerIds and date range)
-      // Note: This limits total claims fetched, not per insurer
-      // Aggregation will work with available claims data
-      final claimsResponse = await _client
-          .from('claims')
-          .select('id, insurer_id, status, created_at, closed_at, damage_cause')
-          .inFilter('insurer_id', insurerIds)
-          .gte('created_at', startDateStr)  // Date range required
-          .lte('created_at', endDateStr)     // Date range required
-          .order('id', ascending: true)     // Deterministic ordering (matches cursor strategy)
-          .limit(pageSize);  // Use report pagination pageSize (100 default, 500 max)
+      final claims = (claimsResponse as List<dynamic>).cast<Map<String, dynamic>>();
 
-      // Group claims by insurer
+      // Group claims by insurer_id
       final claimsByInsurer = <String, List<Map<String, dynamic>>>{};
-      for (final claim in claimsResponse as List<dynamic>) {
-        final claimMap = claim as Map<String, dynamic>;
-        final insurerId = claimMap['insurer_id'] as String;
-        claimsByInsurer.putIfAbsent(insurerId, () => []).add(claimMap);
+      for (final claim in claims) {
+        final insurerId = claim['insurer_id'] as String?;
+        if (insurerId == null) continue;
+        claimsByInsurer.putIfAbsent(insurerId, () => []).add(claim);
       }
 
-      // Build insurer map from insurers list
-      final insurerMap = <String, InsurerPerformanceData>{};
-      for (final insurer in insurers) {
-        final insurerMapData = insurer as Map<String, dynamic>;
-        final insurerId = insurerMapData['id'] as String;
-        final insurerName = insurerMapData['name'] as String;
-        
+      // Get unique insurer IDs and fetch their names
+      final insurerIds = claimsByInsurer.keys.toList();
+      if (insurerIds.isEmpty) {
+        return Result.ok(PaginatedResult(
+          items: [],
+          nextCursor: null,
+          hasMore: false,
+        ));
+      }
+
+      // Fetch insurer names
+      final insurersResponse = await _client
+          .from('insurers')
+          .select('id, name')
+          .inFilter('id', insurerIds);
+
+      final insurersMap = <String, String>{};
+      for (final insurer in insurersResponse) {
+        final id = insurer['id'] as String?;
+        final name = insurer['name'] as String?;
+        if (id != null && name != null) {
+          insurersMap[id] = name;
+        }
+      }
+
+      // Build insurer performance data
+      final insurerDataList = <InsurerPerformanceData>[];
+      for (final insurerId in insurerIds) {
+        final insurerName = insurersMap[insurerId] ?? 'Unknown Insurer';
         final data = InsurerPerformanceData(
           insurerId: insurerId,
           insurerName: insurerName,
         );
 
-        final claims = claimsByInsurer[insurerId] ?? [];
+        final insurerClaims = claimsByInsurer[insurerId] ?? [];
         final damageCauses = <String>{};
         
-        for (final claim in claims) {
+        for (final claim in insurerClaims) {
           data.totalClaims++;
           final status = claim['status'] as String? ?? 'new';
           final damageCause = claim['damage_cause'] as String? ?? 'other';
@@ -951,14 +998,21 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
 
           if (status == 'closed') {
             data.closedClaims++;
-            final createdAt = DateTime.parse(claim['created_at'] as String);
-            final closedAt = claim['closed_at'] != null
-                ? DateTime.parse(claim['closed_at'] as String)
-                : null;
-            if (closedAt != null) {
-              final resolutionTime = closedAt.difference(createdAt).inHours.toDouble();
-              data.totalResolutionTimeHours += resolutionTime;
-              data.resolutionCount++;
+            final createdAtStr = claim['created_at'] as String?;
+            final closedAtStr = claim['closed_at'] as String?;
+            if (createdAtStr != null && closedAtStr != null) {
+              try {
+                final createdAt = DateTime.parse(createdAtStr);
+                final closedAt = DateTime.parse(closedAtStr);
+                final resolutionTime = closedAt.difference(createdAt).inHours.toDouble();
+                data.totalResolutionTimeHours += resolutionTime;
+                data.resolutionCount++;
+              } catch (e) {
+                AppLogger.warn(
+                  'Failed to parse dates for claim ${claim['id']}: $e',
+                  name: 'SupabaseReportingRemoteDataSource',
+                );
+              }
             }
           } else if (status == 'new') {
             data.newClaims++;
@@ -970,10 +1024,29 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
         }
 
         data.uniqueDamageCauseCount = damageCauses.length;
-        insurerMap[insurerId] = data;
+        insurerDataList.add(data);
       }
 
-      final rows = insurerMap.values.map((data) {
+      // Sort by total claims descending, then by insurer_id for deterministic pagination
+      insurerDataList.sort((a, b) {
+        final claimsCompare = b.totalClaims.compareTo(a.totalClaims);
+        if (claimsCompare != 0) return claimsCompare;
+        return a.insurerId.compareTo(b.insurerId);
+      });
+
+      // Paginate the results
+      final hasMore = insurerDataList.length > pageSize;
+      final paginatedData = hasMore
+          ? insurerDataList.take(pageSize).toList()
+          : insurerDataList;
+
+      // Generate next cursor from last insurer
+      String? nextCursor;
+      if (hasMore && paginatedData.isNotEmpty) {
+        nextCursor = paginatedData.last.insurerId;
+      }
+
+      final rows = paginatedData.map((data) {
         return InsurerPerformanceReportRow(
           insurerId: data.insurerId,
           insurerName: data.insurerName,
@@ -996,6 +1069,11 @@ class SupabaseReportingRemoteDataSource implements ReportingRemoteDataSource {
           name: 'SupabaseReportingRemoteDataSource',
         );
       }
+
+      AppLogger.debug(
+        'Fetched ${rows.length} insurer performance rows (${rows.fold<int>(0, (sum, r) => sum + r.totalClaims)} total claims)',
+        name: 'SupabaseReportingRemoteDataSource',
+      );
 
       return Result.ok(PaginatedResult(
         items: rows,

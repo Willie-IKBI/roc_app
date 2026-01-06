@@ -16,5 +16,11 @@ class WebConsole {
   static void reload() {
     // No-op on non-web platforms
   }
+
+  /// Get the current URL (returns empty string on non-web)
+  static String get currentUrl => '';
+
+  /// Get the hostname (returns empty string on non-web)
+  static String get hostname => '';
 }
 

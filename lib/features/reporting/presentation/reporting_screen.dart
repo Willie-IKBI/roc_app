@@ -16,6 +16,7 @@ import 'widgets/status_distribution_report.dart';
 import 'widgets/damage_cause_report.dart';
 import 'widgets/geographic_report.dart';
 import 'widgets/insurer_performance_report.dart';
+import 'widgets/report_date_filter.dart';
 
 class ReportingScreen extends ConsumerStatefulWidget {
   const ReportingScreen({super.key});
@@ -85,12 +86,7 @@ class _ReportingScreenState extends ConsumerState<ReportingScreen> {
             children: [
               GlassCard(
                 padding: const EdgeInsets.all(DesignTokens.spaceM),
-                child: _WindowSelector(
-                  selected: data.window,
-                  onChanged: (window) => ref
-                      .read(reportingControllerProvider.notifier)
-                      .changeWindow(window),
-                ),
+                child: const ReportDateFilter(),
               ),
               const SizedBox(height: DesignTokens.spaceM),
               _SummaryCards(
@@ -167,45 +163,6 @@ class _TabBar extends StatelessWidget {
           );
         }).toList(),
       ),
-    );
-  }
-}
-
-class _WindowSelector extends StatelessWidget {
-  const _WindowSelector({
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final ReportingWindow selected;
-  final ValueChanged<ReportingWindow> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SegmentedButton<ReportingWindow>(
-      segments: [
-        ButtonSegment(
-          value: ReportingWindow.last7,
-          label: const Text('7d'),
-          icon: const Icon(Icons.calendar_view_week),
-        ),
-        ButtonSegment(
-          value: ReportingWindow.last14,
-          label: const Text('14d'),
-          icon: const Icon(Icons.calendar_view_week_outlined),
-        ),
-        ButtonSegment(
-          value: ReportingWindow.last30,
-          label: const Text('30d'),
-          icon: const Icon(Icons.calendar_month_outlined),
-        ),
-      ],
-      selected: <ReportingWindow>{selected},
-      onSelectionChanged: (selection) {
-        if (selection.isNotEmpty) {
-          onChanged(selection.first);
-        }
-      },
     );
   }
 }
@@ -358,7 +315,7 @@ class _DailyTrendChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (reports.isEmpty) {
-      return const SizedBox.shrink();
+      return const SizedBox(height: 0);
     }
     final theme = Theme.of(context);
     final formatter = DateFormat.MMMd();

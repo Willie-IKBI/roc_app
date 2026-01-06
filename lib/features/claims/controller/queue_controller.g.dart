@@ -51,7 +51,7 @@ final class ClaimsQueueControllerProvider
 }
 
 String _$claimsQueueControllerHash() =>
-    r'70867e0c369fb52b282efd45541a625e654995b7';
+    r'598e4d4c48069f71ed15781e53582c4922cb3223';
 
 final class ClaimsQueueControllerFamily extends $Family
     with

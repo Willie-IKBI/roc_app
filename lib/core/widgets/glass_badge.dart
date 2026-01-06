@@ -66,6 +66,10 @@ class GlassBadge extends StatelessWidget {
     return Semantics(
       label: semanticLabel ?? label,
       child: Container(
+        constraints: const BoxConstraints(
+          minWidth: 0, // Allow shrinking
+          maxWidth: double.infinity, // Respect parent constraints
+        ),
         padding: const EdgeInsets.symmetric(
           horizontal: DesignTokens.spaceM,
           vertical: DesignTokens.spaceS,

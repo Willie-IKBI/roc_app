@@ -6,31 +6,9 @@ import '../../../../core/widgets/glass_card.dart';
 import '../../../../core/widgets/glass_empty_state.dart';
 import '../../../../core/widgets/glass_error_state.dart';
 import '../../../../domain/models/report_models.dart';
-import '../../../../data/repositories/reporting_repository_supabase.dart';
-import '../../controller/reporting_controller.dart';
-import '../../domain/reporting_state.dart';
-
-final geographicReportProvider = FutureProvider.family<List<GeographicReport>, String?>((ref, groupBy) async {
-  // Get date range from reporting window
-  final window = ref.watch(reportingWindowControllerProvider);
-  final now = DateTime.now().toUtc();
-  final today = DateTime.utc(now.year, now.month, now.day);
-  final startDate = today.subtract(Duration(days: window.days - 1));
-  final endDate = today.add(const Duration(days: 1));
-
-  // Use repository provider (no direct Supabase calls)
-  final repository = ref.watch(reportingRepositoryProvider);
-  final result = await repository.fetchGeographicReportPage(
-    startDate: startDate,
-    endDate: endDate,
-    groupBy: groupBy,
-    limit: 100, // First page only for now
-  );
-  if (result.isErr) {
-    throw result.error;
-  }
-  return result.data.items; // Return items from paginated result
-});
+import '../../controller/paginated_report_controller.dart';
+import '../../domain/paginated_report_state.dart';
+import 'report_date_filter.dart';
 
 class GeographicReportWidget extends ConsumerStatefulWidget {
   const GeographicReportWidget({super.key});
@@ -41,77 +19,249 @@ class GeographicReportWidget extends ConsumerStatefulWidget {
 
 class _GeographicReportWidgetState extends ConsumerState<GeographicReportWidget> {
   String _groupBy = 'province';
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels >= 
+        _scrollController.position.maxScrollExtent - 200) {
+      // Defer state changes to avoid issues during pointer events
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final asyncState = ref.read(geographicReportControllerProvider(_groupBy));
+        if (!asyncState.hasValue) return;
+        final state = asyncState.value!;
+        if (!state.hasMore || state.isLoadingMore) return;
+        ref.read(geographicReportControllerProvider(_groupBy).notifier).loadMore();
+      });
+    }
+  }
+
+  int _calculateItemCount(PaginatedReportState<GeographicReport>? state) {
+    if (state == null) return 4; // Date filter + Title + GroupBy + Loading
+    int count = 3; // Date filter + Title + GroupBy selector
+    if (state.isLoading && state.items.isEmpty) return count + 1; // Loading
+    if (state.error != null && state.items.isEmpty) return count + 1; // Error
+    if (state.items.isEmpty) return count + 1; // Empty
+    count += 1; // Geographic card container
+    if (state.hasMore) count += 1; // Load more button/indicator
+    return count;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final reportAsync = ref.watch(geographicReportProvider(_groupBy));
+    final asyncState = ref.watch(geographicReportControllerProvider(_groupBy));
     final theme = Theme.of(context);
+    final controller = ref.read(geographicReportControllerProvider(_groupBy).notifier);
 
-    return reportAsync.when(
-      data: (reports) {
-        if (reports.isEmpty) {
-          return const GlassEmptyState(
-            title: 'No geographic data',
-            description: 'No claims with address data found.',
-            icon: Icons.map_outlined,
-          );
-        }
+    return RefreshIndicator(
+      onRefresh: () => controller.refresh(),
+      child: asyncState.when(
+        data: (state) {
+          // Sort by count descending
+          final sorted = state.items.isEmpty
+              ? <GeographicReport>[]
+              : <GeographicReport>[...state.items]..sort((a, b) => b.claimCount.compareTo(a.claimCount));
 
-        // Sort by count descending
-        final sorted = [...reports]..sort((a, b) => b.claimCount.compareTo(a.claimCount));
-
-        return RefreshIndicator(
-          onRefresh: () => ref.refresh(geographicReportProvider(_groupBy).future),
-          child: ListView(
+          return ListView.builder(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(DesignTokens.spaceM),
-            children: [
-              Text(
-                'Geographic Distribution',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
+            itemCount: _calculateItemCount(state),
+            itemBuilder: (context, index) {
+          // Bounds check - should never happen if itemCount is correct
+          final itemCount = _calculateItemCount(state);
+          if (index < 0 || index >= itemCount) {
+            return const SizedBox(height: 1);
+          }
+          
+          // Index 0: Date Filter
+          if (index == 0) {
+            return GlassCard(
+              padding: const EdgeInsets.all(DesignTokens.spaceM),
+              margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
+              child: const ReportDateFilter(),
+            );
+          }
+          
+          // Index 1: Title
+          if (index == 1) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Geographic Distribution',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+                const SizedBox(height: DesignTokens.spaceM),
+              ],
+            );
+          }
+          
+          // Index 2: GroupBy selector
+          if (index == 2) {
+            return GlassCard(
+              padding: const EdgeInsets.all(DesignTokens.spaceM),
+              margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'province', label: Text('Province')),
+                  ButtonSegment(value: 'city', label: Text('City')),
+                  ButtonSegment(value: 'suburb', label: Text('Suburb')),
+                ],
+                selected: {_groupBy},
+                onSelectionChanged: (selection) {
+                  if (selection.isNotEmpty) {
+                    setState(() => _groupBy = selection.first);
+                  }
+                },
               ),
-              const SizedBox(height: DesignTokens.spaceM),
-              GlassCard(
+            );
+          }
+          
+          // Index 3: Loading/Error/Empty states
+          if (index == 3) {
+            if (state.isLoading && state.items.isEmpty) {
+              return const SizedBox(
+                height: 400,
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(DesignTokens.spaceL),
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+              );
+            }
+            if (state.error != null && state.items.isEmpty) {
+              return SizedBox(
+                height: 400,
+                child: GlassErrorState(
+                  title: 'Error loading geographic report',
+                  message: state.error.toString(),
+                  onRetry: () => controller.refresh(),
+                ),
+              );
+            }
+            if (state.items.isEmpty) {
+              return const SizedBox(
+                height: 400,
+                child: GlassEmptyState(
+                  title: 'No geographic data',
+                  description: 'No claims with address data found for the selected date range.\nTry selecting a different date range.',
+                  icon: Icons.map_outlined,
+                ),
+              );
+            }
+            // If we have items, show the geographic card
+            return GlassCard(
+              padding: const EdgeInsets.all(DesignTokens.spaceM),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Claims by ${_groupBy[0].toUpperCase()}${_groupBy.substring(1)}',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: DesignTokens.spaceM),
+                  ...sorted.map((report) => _GeographicRow(report: report)),
+                ],
+              ),
+            );
+          }
+          
+          // Index 4: Load more (only if hasMore is true)
+          if (index == 4 && state.hasMore) {
+            if (state.isLoadingMore) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(DesignTokens.spaceM),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+            return Center(
+              child: Padding(
                 padding: const EdgeInsets.all(DesignTokens.spaceM),
-                margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
-                child: SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'province', label: Text('Province')),
-                    ButtonSegment(value: 'city', label: Text('City')),
-                    ButtonSegment(value: 'suburb', label: Text('Suburb')),
-                  ],
-                  selected: {_groupBy},
-                  onSelectionChanged: (selection) {
-                    if (selection.isNotEmpty) {
-                      setState(() => _groupBy = selection.first);
-                    }
-                  },
+                child: OutlinedButton.icon(
+                  onPressed: () => controller.loadMore(),
+                  icon: const Icon(Icons.expand_more),
+                  label: const Text('Load More'),
                 ),
               ),
-              GlassCard(
-                padding: const EdgeInsets.all(DesignTokens.spaceM),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Claims by ${_groupBy[0].toUpperCase()}${_groupBy.substring(1)}',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: DesignTokens.spaceM),
-                    ...sorted.take(20).map((report) => _GeographicRow(report: report)),
-                  ],
-                ),
+            );
+          }
+          
+          // Fallback: return empty container (should never reach here)
+          return const SizedBox(height: 1);
+        },
+      );
+        },
+        loading: () => ListView(
+          padding: const EdgeInsets.all(DesignTokens.spaceM),
+          children: [
+            GlassCard(
+              padding: const EdgeInsets.all(DesignTokens.spaceM),
+              margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
+              child: const ReportDateFilter(),
+            ),
+            GlassCard(
+              padding: const EdgeInsets.all(DesignTokens.spaceM),
+              margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'province', label: Text('Province')),
+                  ButtonSegment(value: 'city', label: Text('City')),
+                  ButtonSegment(value: 'suburb', label: Text('Suburb')),
+                ],
+                selected: {_groupBy},
+                onSelectionChanged: (selection) {
+                  if (selection.isNotEmpty) {
+                    setState(() => _groupBy = selection.first);
+                  }
+                },
               ),
-            ],
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => GlassErrorState(
-        title: 'Error loading geographic report',
-        message: error.toString(),
-        onRetry: () => ref.refresh(geographicReportProvider(_groupBy)),
+            ),
+            const SizedBox(
+              height: 400,
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          ],
+        ),
+        error: (error, stack) => ListView(
+          padding: const EdgeInsets.all(DesignTokens.spaceM),
+          children: [
+            GlassCard(
+              padding: const EdgeInsets.all(DesignTokens.spaceM),
+              margin: const EdgeInsets.only(bottom: DesignTokens.spaceM),
+              child: const ReportDateFilter(),
+            ),
+            SizedBox(
+              height: 400,
+              child: GlassErrorState(
+                title: 'Error loading geographic report',
+                message: error.toString(),
+                onRetry: () => controller.refresh(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

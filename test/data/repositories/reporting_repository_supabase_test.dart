@@ -28,10 +28,15 @@ void main() {
   );
 
   test('fetchDailyReports maps rows to domain', () async {
+    final startDate = DateTime.utc(2025, 11, 1);
+    final endDate = DateTime.utc(2025, 11, 7);
     when(() => remote.fetchDailyReports(startDate: any(named: 'startDate'), endDate: any(named: 'endDate')))
         .thenAnswer((_) async => Result.ok([row]));
 
-    final result = await repository.fetchDailyReports();
+    final result = await repository.fetchDailyReports(
+      startDate: startDate,
+      endDate: endDate,
+    );
 
     expect(result.isOk, isTrue);
     expect(result.data, hasLength(1));
@@ -39,15 +44,20 @@ void main() {
     expect(report.date, row.reportDate);
     expect(report.claimsCaptured, 5);
     expect(report.averageMinutesToFirstContact, 45.5);
-    verify(() => remote.fetchDailyReports(startDate: null, endDate: null)).called(1);
+    verify(() => remote.fetchDailyReports(startDate: startDate, endDate: endDate)).called(1);
   });
 
   test('fetchDailyReports propagates error', () async {
+    final startDate = DateTime.utc(2025, 11, 1);
+    final endDate = DateTime.utc(2025, 11, 7);
     final error = UnknownError(Exception('boom'));
     when(() => remote.fetchDailyReports(startDate: any(named: 'startDate'), endDate: any(named: 'endDate')))
         .thenAnswer((_) async => Result.err(error));
 
-    final result = await repository.fetchDailyReports();
+    final result = await repository.fetchDailyReports(
+      startDate: startDate,
+      endDate: endDate,
+    );
 
     expect(result.isErr, isTrue);
     expect(result.error, same(error));

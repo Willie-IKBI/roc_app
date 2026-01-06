@@ -17,6 +17,8 @@ class SupabaseSchedulingRemoteDataSource implements SchedulingRemoteDataSource {
       final dateStr = date.toIso8601String().split('T')[0];
 
       // Build query with all required joins
+      // Note: estimated_duration_minutes and travel_time_minutes are optional
+      // and may not exist if migration hasn't been applied
       var query = _client
           .from('claims')
           .select('''
@@ -27,8 +29,6 @@ class SupabaseSchedulingRemoteDataSource implements SchedulingRemoteDataSource {
             appointment_time,
             status,
             priority,
-            estimated_duration_minutes,
-            travel_time_minutes,
             client:clients!claims_client_id_fkey(
               first_name,
               last_name,

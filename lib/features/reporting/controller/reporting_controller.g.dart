@@ -63,6 +63,74 @@ abstract class _$ReportingWindowController extends $Notifier<ReportingWindow> {
   }
 }
 
+@ProviderFor(CustomDateRangeController)
+const customDateRangeControllerProvider = CustomDateRangeControllerProvider._();
+
+final class CustomDateRangeControllerProvider
+    extends
+        $NotifierProvider<
+          CustomDateRangeController,
+          ({DateTime endDate, DateTime startDate})?
+        > {
+  const CustomDateRangeControllerProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'customDateRangeControllerProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$customDateRangeControllerHash();
+
+  @$internal
+  @override
+  CustomDateRangeController create() => CustomDateRangeController();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(({DateTime endDate, DateTime startDate})? value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride:
+          $SyncValueProvider<({DateTime endDate, DateTime startDate})?>(value),
+    );
+  }
+}
+
+String _$customDateRangeControllerHash() =>
+    r'ef4b4b387c8e3226212f1ca598a5c2f0de028879';
+
+abstract class _$CustomDateRangeController
+    extends $Notifier<({DateTime endDate, DateTime startDate})?> {
+  ({DateTime endDate, DateTime startDate})? build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build();
+    final ref =
+        this.ref
+            as $Ref<
+              ({DateTime endDate, DateTime startDate})?,
+              ({DateTime endDate, DateTime startDate})?
+            >;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<
+                ({DateTime endDate, DateTime startDate})?,
+                ({DateTime endDate, DateTime startDate})?
+              >,
+              ({DateTime endDate, DateTime startDate})?,
+              Object?,
+              Object?
+            >;
+    element.handleValue(ref, created);
+  }
+}
+
 @ProviderFor(ReportingController)
 const reportingControllerProvider = ReportingControllerProvider._();
 
@@ -88,7 +156,7 @@ final class ReportingControllerProvider
 }
 
 String _$reportingControllerHash() =>
-    r'3234a1149eaaf67d5e585e88703eaa4ecc72a9f1';
+    r'398743b0b0584a820838805ffc1177f8011de166';
 
 abstract class _$ReportingController extends $AsyncNotifier<ReportingState> {
   FutureOr<ReportingState> build();

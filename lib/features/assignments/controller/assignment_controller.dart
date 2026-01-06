@@ -41,13 +41,14 @@ class AssignableJobsController extends _$AssignableJobsController {
     DateTime? dateFrom,
     DateTime? dateTo,
   }) async {
-    // Initial load
+    // Initial load - don't update state internally, let Riverpod handle it
     return await _loadFirstPage(
       statusFilter: statusFilter,
       assignedFilter: assignedFilter,
       technicianIdFilter: technicianIdFilter,
       dateFrom: dateFrom,
       dateTo: dateTo,
+      updateState: false,
     );
   }
 
@@ -58,20 +59,24 @@ class AssignableJobsController extends _$AssignableJobsController {
     String? technicianIdFilter,
     DateTime? dateFrom,
     DateTime? dateTo,
+    bool updateState = true,
   }) async {
-    final currentState = state.asData?.value ?? AssignableJobsState();
-    state = AsyncValue.data(
-      currentState.copyWith(
-        isLoading: true,
-        error: null,
-        statusFilter: statusFilter,
-        assignedFilter: assignedFilter,
-        technicianIdFilter: technicianIdFilter,
-        dateFrom: dateFrom,
-        dateTo: dateTo,
-        items: [], // Clear items on first page load
-      ),
-    );
+    // Set loading state only if updating state (not during build)
+    if (updateState) {
+      final currentState = state.asData?.value ?? AssignableJobsState();
+      state = AsyncValue.data(
+        currentState.copyWith(
+          isLoading: true,
+          error: null,
+          statusFilter: statusFilter,
+          assignedFilter: assignedFilter,
+          technicianIdFilter: technicianIdFilter,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+          items: [], // Clear items on first page load
+        ),
+      );
+    }
 
     final repository = ref.read(assignmentsRepositoryProvider);
     final result = await repository.fetchAssignableJobsPage(
@@ -84,8 +89,9 @@ class AssignableJobsController extends _$AssignableJobsController {
       dateTo: dateTo,
     );
 
+    AssignableJobsState finalState;
     if (result.isErr) {
-      return AssignableJobsState(
+      finalState = AssignableJobsState(
         items: [],
         isLoading: false,
         error: result.error,
@@ -95,20 +101,26 @@ class AssignableJobsController extends _$AssignableJobsController {
         dateFrom: dateFrom,
         dateTo: dateTo,
       );
+    } else {
+      final page = result.data;
+      finalState = AssignableJobsState(
+        items: page.items,
+        isLoading: false,
+        hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
+        statusFilter: statusFilter,
+        assignedFilter: assignedFilter,
+        technicianIdFilter: technicianIdFilter,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
     }
-
-    final page = result.data;
-    return AssignableJobsState(
-      items: page.items,
-      isLoading: false,
-      hasMore: page.hasMore,
-      nextCursor: page.nextCursor,
-      statusFilter: statusFilter,
-      assignedFilter: assignedFilter,
-      technicianIdFilter: technicianIdFilter,
-      dateFrom: dateFrom,
-      dateTo: dateTo,
-    );
+    
+    // Update state with final result (only if updating state)
+    if (updateState) {
+      state = AsyncValue.data(finalState);
+    }
+    return finalState;
   }
 
   /// Load next page (append to existing items)
@@ -170,6 +182,7 @@ class AssignableJobsController extends _$AssignableJobsController {
       technicianIdFilter: current?.technicianIdFilter,
       dateFrom: current?.dateFrom,
       dateTo: current?.dateTo,
+      updateState: true,
     );
     state = AsyncValue.data(newState);
   }
@@ -188,6 +201,7 @@ class AssignableJobsController extends _$AssignableJobsController {
       technicianIdFilter: technicianIdFilter,
       dateFrom: dateFrom,
       dateTo: dateTo,
+      updateState: true,
     );
     state = AsyncValue.data(newState);
   }

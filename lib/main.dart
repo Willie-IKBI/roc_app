@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config/env.dart';
@@ -14,6 +15,9 @@ import 'core/widgets/glass_error_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Disable GoogleFonts runtime fetching to prevent AssetManifest.json errors in web debug
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   // Set up global error handlers to prevent white screen crashes
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -84,16 +88,14 @@ Future<void> main() async {
   try {
     // CRITICAL: Log diagnostic info immediately for debugging deployment issues
     if (kIsWeb) {
-      html.window.console.log('[AppInit] Starting application initialization...');
-      html.window.console.log('[AppInit] Current URL: ${html.window.location.href}');
-      html.window.console.log('[AppInit] Hostname: ${html.window.location.hostname}');
+      WebConsole.log('[AppInit] Starting application initialization...');
+      WebConsole.log('[AppInit] Current URL: ${WebConsole.currentUrl}');
+      WebConsole.log('[AppInit] Hostname: ${WebConsole.hostname}');
       
       // Check if diagnostic info is available
       try {
-        final diagnostic = (html.window as dynamic).rocEnvDiagnostic;
-        if (diagnostic != null) {
-          html.window.console.log('[AppInit] Diagnostic info available from pre-load script');
-        }
+        // Note: Dynamic access to window.rocEnvDiagnostic is handled via JS interop if needed
+        // For now, we'll skip this check as it requires dart:js_interop
       } catch (_) {
         // Ignore if diagnostic not available
       }
@@ -111,9 +113,9 @@ Future<void> main() async {
           'Check browser console for details.';
       
       if (kIsWeb) {
-        html.window.console.error('[AppInit] $errorMsg');
-        html.window.console.error('[AppInit] Build command should be: flutter build web --release --dart-define-from-file=env/prod.json --base-href=/');
-        html.window.console.error('[AppInit] Verify env/prod.json exists and contains all required variables');
+        WebConsole.error('[AppInit] $errorMsg');
+        WebConsole.error('[AppInit] Build command should be: flutter build web --release --dart-define-from-file=env/prod.json --base-href=/');
+        WebConsole.error('[AppInit] Verify env/prod.json exists and contains all required variables');
       }
       
       throw StateError(errorMsg);
@@ -160,7 +162,7 @@ Future<void> main() async {
       
       // Log to console for debugging
       if (kIsWeb) {
-        html.window.console.error(
+        WebConsole.error(
           'Supabase initialization failed: $supabaseError\n${supabaseStack.toString()}',
         );
       }
@@ -223,12 +225,12 @@ Future<void> main() async {
         }
         
         if (kIsWeb) {
-          html.window.console.error('[AppInit] Environment variable error detected');
-          html.window.console.error('[AppInit] Error details: $error');
+          WebConsole.error('[AppInit] Environment variable error detected');
+          WebConsole.error('[AppInit] Error details: $error');
           if (kDebugMode) {
-            html.window.console.error('[AppInit] Running in DEBUG mode - use: flutter run -d chrome --dart-define-from-file=env/dev.json');
+            WebConsole.error('[AppInit] Running in DEBUG mode - use: flutter run -d chrome --dart-define-from-file=env/dev.json');
           } else {
-            html.window.console.error('[AppInit] Running in RELEASE mode - use: flutter build web --release --dart-define-from-file=env/prod.json --base-href=/');
+            WebConsole.error('[AppInit] Running in RELEASE mode - use: flutter build web --release --dart-define-from-file=env/prod.json --base-href=/');
           }
         }
       } else {
@@ -249,7 +251,7 @@ Future<void> main() async {
             onRetry: () {
               // Reload the page in web
               if (kIsWeb) {
-                html.window.location.reload();
+                WebConsole.reload();
               }
             },
           ),

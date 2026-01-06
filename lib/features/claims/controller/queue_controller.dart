@@ -27,21 +27,24 @@ abstract class ClaimsQueueState with _$ClaimsQueueState {
 class ClaimsQueueController extends _$ClaimsQueueController {
   @override
   Future<ClaimsQueueState> build({ClaimStatus? status}) async {
-    // Initial load
-    return await _loadFirstPage(status: status);
+    // Initial load - don't update state internally, let Riverpod handle it
+    return await _loadFirstPage(status: status, updateState: false);
   }
 
   /// Load first page (reset pagination)
-  Future<ClaimsQueueState> _loadFirstPage({ClaimStatus? status}) async {
-    final currentState = state.asData?.value ?? ClaimsQueueState();
-    state = AsyncValue.data(
-      currentState.copyWith(
-        isLoading: true,
-        error: null,
-        statusFilter: status,
-        items: [], // Clear items on first page load
-      ),
-    );
+  Future<ClaimsQueueState> _loadFirstPage({ClaimStatus? status, bool updateState = true}) async {
+    // Set loading state only if updating state (not during build)
+    if (updateState) {
+      final currentState = state.asData?.value ?? ClaimsQueueState();
+      state = AsyncValue.data(
+        currentState.copyWith(
+          isLoading: true,
+          error: null,
+          statusFilter: status,
+          items: [], // Clear items on first page load
+        ),
+      );
+    }
 
     final repository = ref.read(claimRepositoryProvider);
     final result = await repository.fetchQueuePage(
@@ -50,23 +53,30 @@ class ClaimsQueueController extends _$ClaimsQueueController {
       status: status,
     );
 
+    ClaimsQueueState finalState;
     if (result.isErr) {
-      return ClaimsQueueState(
+      finalState = ClaimsQueueState(
         items: [],
         isLoading: false,
         error: result.error,
         statusFilter: status,
       );
+    } else {
+      final page = result.data;
+      finalState = ClaimsQueueState(
+        items: page.items,
+        isLoading: false,
+        hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
+        statusFilter: status,
+      );
     }
-
-    final page = result.data;
-    return ClaimsQueueState(
-      items: page.items,
-      isLoading: false,
-      hasMore: page.hasMore,
-      nextCursor: page.nextCursor,
-      statusFilter: status,
-    );
+    
+    // Update state with final result (only if updating state)
+    if (updateState) {
+      state = AsyncValue.data(finalState);
+    }
+    return finalState;
   }
 
   /// Load next page (append to existing items)
@@ -118,13 +128,13 @@ class ClaimsQueueController extends _$ClaimsQueueController {
   /// Refresh (reload first page)
   Future<void> refresh() async {
     final current = state.asData?.value;
-    final newState = await _loadFirstPage(status: current?.statusFilter);
+    final newState = await _loadFirstPage(status: current?.statusFilter, updateState: true);
     state = AsyncValue.data(newState);
   }
 
   /// Update status filter (reload first page)
   Future<void> setStatusFilter(ClaimStatus? status) async {
-    final newState = await _loadFirstPage(status: status);
+    final newState = await _loadFirstPage(status: status, updateState: true);
     state = AsyncValue.data(newState);
   }
 }

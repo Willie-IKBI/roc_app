@@ -60,7 +60,7 @@ final class AssignableJobsControllerProvider
 }
 
 String _$assignableJobsControllerHash() =>
-    r'67eb0fa1505111ea040cf570a549c241c480d48e';
+    r'abe7f62a1957b362e5881e1a312afd7e598f0572';
 
 final class AssignableJobsControllerFamily extends $Family
     with

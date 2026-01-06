@@ -15,7 +15,7 @@ class SupabaseDashboardRemoteDataSource implements DashboardRemoteDataSource {
       // Helper to build base query for active claims (not closed/cancelled)
       Future<int> _countActiveClaims() => _client
           .from('v_claims_list')
-          .select('id')
+          .select('claim_id')
           .neq('status', ClaimStatus.closed.value)
           .neq('status', ClaimStatus.cancelled.value)
           .count(CountOption.exact)
@@ -24,7 +24,7 @@ class SupabaseDashboardRemoteDataSource implements DashboardRemoteDataSource {
       // Helper to count by status
       Future<MapEntry<ClaimStatus, int>> _countByStatus(ClaimStatus status) => _client
           .from('v_claims_list')
-          .select('id')
+          .select('claim_id')
           .neq('status', ClaimStatus.closed.value)
           .neq('status', ClaimStatus.cancelled.value)
           .eq('status', status.value)
@@ -34,7 +34,7 @@ class SupabaseDashboardRemoteDataSource implements DashboardRemoteDataSource {
       // Helper to count by priority
       Future<MapEntry<PriorityLevel, int>> _countByPriority(PriorityLevel priority) => _client
           .from('v_claims_list')
-          .select('id')
+          .select('claim_id')
           .neq('status', ClaimStatus.closed.value)
           .neq('status', ClaimStatus.cancelled.value)
           .eq('priority', priority.value)
@@ -84,7 +84,7 @@ class SupabaseDashboardRemoteDataSource implements DashboardRemoteDataSource {
         slaCountQueries.add(
           _client
               .from('v_claims_list')
-              .select('id')
+              .select('claim_id')
               .neq('status', ClaimStatus.closed.value)
               .neq('status', ClaimStatus.cancelled.value)
               .eq('priority', priority.value)
@@ -104,7 +104,7 @@ class SupabaseDashboardRemoteDataSource implements DashboardRemoteDataSource {
         slaCountQueries.add(
           _client
               .from('v_claims_list')
-              .select('id')
+              .select('claim_id')
               .neq('status', ClaimStatus.closed.value)
               .neq('status', ClaimStatus.cancelled.value)
               .eq('priority', priority.value)
@@ -121,7 +121,7 @@ class SupabaseDashboardRemoteDataSource implements DashboardRemoteDataSource {
       slaCountQueries.add(
         _client
             .from('v_claims_list')
-            .select('id')
+            .select('claim_id')
             .neq('status', ClaimStatus.closed.value)
             .neq('status', ClaimStatus.cancelled.value)
             .or('latest_contact_attempt_at.is.null,latest_contact_attempt_at.lt.${fourHoursAgo.toIso8601String()}')

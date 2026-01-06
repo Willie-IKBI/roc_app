@@ -18,5 +18,11 @@ class WebConsole {
   static void reload() {
     html.window.location.reload();
   }
+
+  /// Get the current URL
+  static String get currentUrl => html.window.location.href;
+
+  /// Get the hostname
+  static String get hostname => html.window.location.hostname ?? '';
 }
 

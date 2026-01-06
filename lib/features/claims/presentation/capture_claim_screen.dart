@@ -619,7 +619,23 @@ class _CaptureClaimScreenState extends ConsumerState<CaptureClaimScreen> {
   }
 
   Future<void> _handleAddressSearch(String value) async {
-    if (!_useWebPlaces && _googlePlace == null) return;
+    // Only process if we're in search mode and have a valid API setup
+    if (_addressInputMode != AddressInputMode.search) {
+      AppLogger.debug(
+        'Address search skipped: not in search mode (current mode: $_addressInputMode)',
+        name: 'CaptureClaim',
+      );
+      return;
+    }
+    
+    if (!_useWebPlaces && _googlePlace == null) {
+      AppLogger.warn(
+        'Address search skipped: Places API not available (_useWebPlaces: $_useWebPlaces, _googlePlace: ${_googlePlace != null})',
+        name: 'CaptureClaim',
+      );
+      return;
+    }
+    
     _addressSearchDebounce?.cancel();
     
     // Clear loading state immediately when user types

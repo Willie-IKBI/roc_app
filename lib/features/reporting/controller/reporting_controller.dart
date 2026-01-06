@@ -18,30 +18,70 @@ class ReportingWindowController extends _$ReportingWindowController {
 }
 
 @riverpod
+class CustomDateRangeController extends _$CustomDateRangeController {
+  @override
+  ({DateTime startDate, DateTime endDate})? build() => null;
+
+  void setDateRange(DateTime startDate, DateTime endDate) {
+    state = (startDate: startDate, endDate: endDate);
+  }
+
+  void clear() {
+    state = null;
+  }
+}
+
+@riverpod
 class ReportingController extends _$ReportingController {
   @override
   Future<ReportingState> build() async {
     final window = ref.watch(reportingWindowControllerProvider);
-    return _load(window);
+    final customDateRange = ref.watch(customDateRangeControllerProvider);
+    return _load(window, customDateRange);
   }
 
   Future<void> changeWindow(ReportingWindow window) async {
     state = const AsyncLoading();
     ref.read(reportingWindowControllerProvider.notifier).setWindow(window);
+    // Clear custom date range when selecting a preset
+    ref.read(customDateRangeControllerProvider.notifier).clear();
+  }
+
+  Future<void> setCustomDateRange(DateTime startDate, DateTime endDate) async {
+    state = const AsyncLoading();
+    ref.read(customDateRangeControllerProvider.notifier).setDateRange(startDate, endDate);
+    // Set window to last30 as a fallback (won't be used since custom range is set)
+    ref.read(reportingWindowControllerProvider.notifier).setWindow(ReportingWindow.last30);
   }
 
   Future<void> refresh() async {
     state = const AsyncLoading();
     final window = ref.read(reportingWindowControllerProvider);
-    state = await AsyncValue.guard(() => _load(window));
+    final customDateRange = ref.read(customDateRangeControllerProvider);
+    state = await AsyncValue.guard(() => _load(window, customDateRange));
   }
 
-  Future<ReportingState> _load(ReportingWindow window) async {
+  Future<ReportingState> _load(
+    ReportingWindow window,
+    ({DateTime startDate, DateTime endDate})? customDateRange,
+  ) async {
     final repository = ref.read(reportingRepositoryProvider);
-    final now = DateTime.now().toUtc();
-    final today = DateTime.utc(now.year, now.month, now.day);
-    final startDate = today.subtract(Duration(days: window.days - 1));
-    final endDate = today.add(const Duration(days: 1));
+    
+    DateTime startDate;
+    DateTime endDate;
+    
+    if (customDateRange != null) {
+      // Use custom date range
+      startDate = customDateRange.startDate;
+      endDate = customDateRange.endDate;
+    } else {
+      // Use preset window
+      final now = DateTime.now().toUtc();
+      final today = DateTime.utc(now.year, now.month, now.day);
+      startDate = today.subtract(Duration(days: window.days - 1));
+      // Use end of today (23:59:59.999) instead of tomorrow to include all of today's data
+      endDate = DateTime.utc(today.year, today.month, today.day, 23, 59, 59, 999);
+    }
     
     // Date range is now required (enforced at method signature level)
     final result = await repository.fetchDailyReports(

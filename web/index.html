@@ -34,6 +34,11 @@
 </head>
 <body>
   <script>
+    // CRITICAL TEST: This must execute immediately - if you don't see this log, scripts aren't running
+    console.log('=== SCRIPT EXECUTION TEST ===');
+    console.log('Script execution timestamp:', Date.now());
+    window._scriptTestExecuted = true;
+    
     // Environment variable diagnostic - runs immediately to help debug deployment issues
     (function() {
       // This script runs before Flutter loads to provide early diagnostics
@@ -79,7 +84,16 @@
       }
     }
     
-    window.rocPlaces = (function () {
+    // Immediately log that we're about to define rocPlaces
+    console.log('[rocPlaces] Starting rocPlaces initialization...');
+    
+    // Set a flag immediately to verify script execution
+    window._rocPlacesScriptExecuting = true;
+    window._rocPlacesScriptStartTime = Date.now();
+    
+    try {
+      window.rocPlaces = (function () {
+        console.log('[rocPlaces] rocPlaces IIFE executing...');
       let scriptLoader = null;
       let placesLibraryPromise = null;
       let sessionToken = null;
@@ -337,509 +351,774 @@
         });
       }
 
-      async function reverseGeocode(lat, lng) {
-        if (!lat || !lng) {
-          return Promise.reject('Missing latitude or longitude');
-        }
-        if (!cachedKey) {
-          return Promise.reject('Places API not initialized');
-        }
-        
+      function reverseGeocode(lat, lng, onSuccess, onError) {
+        // Callback-based approach to avoid promise conversion issues with minified code
         try {
-          await ensurePlacesReady(cachedKey);
-          debugLog('[rocPlaces] Reverse geocoding for coordinates:', lat, lng);
-          
-          // Verify main Maps API is available
-          if (!window.google || !window.google.maps) {
-            debugError('[rocPlaces] Google Maps API not available for reverse geocoding');
-            return Promise.reject('Google Maps API not available');
-          }
-          
-          // Verify Geocoder is available and is a constructor function
-          if (!window.google.maps.Geocoder) {
-            debugError('[rocPlaces] Geocoder not available');
-            debugError('[rocPlaces] Please ensure:');
-            debugError('[rocPlaces] 1. Geocoding API is enabled in Google Cloud Console');
-            debugError('[rocPlaces] 2. API key has access to Geocoding API');
-            debugError('[rocPlaces] 3. Billing is enabled for your Google Cloud project');
-            return Promise.reject('Geocoder not available. Please enable Geocoding API in Google Cloud Console.');
-          }
-          
-          if (typeof window.google.maps.Geocoder !== 'function') {
-            debugError('[rocPlaces] Geocoder is not a constructor function');
-            debugError('[rocPlaces] Geocoder type:', typeof window.google.maps.Geocoder);
-            return Promise.reject('Geocoder is not properly initialized');
-          }
-          
-          debugLog('[rocPlaces] Geocoder verified as constructor function, using for reverse geocoding');
-          return new Promise(function (resolve, reject) {
-            try {
-              // Verify GeocoderStatus enum is available
-              if (!google.maps.GeocoderStatus) {
-                debugError('[rocPlaces] GeocoderStatus enum not available');
-                reject('GeocoderStatus not available');
-                return;
-              }
-              
-              debugLog('[rocPlaces] Creating Geocoder instance...');
-              const geocoder = new google.maps.Geocoder();
-              if (!geocoder) {
-                debugError('[rocPlaces] Failed to create Geocoder instance');
-                reject('Failed to create Geocoder instance');
-                return;
-              }
-              
-              debugLog('[rocPlaces] Geocoder instance created successfully');
-              debugLog('[rocPlaces] Preparing geocode request for coordinates:', lat, lng);
-              
-              const request = {
-                location: { lat: parseFloat(lat), lng: parseFloat(lng) },
-              };
-              debugLog('[rocPlaces] Geocode request:', JSON.stringify(request));
-              
-              debugLog('[rocPlaces] Calling geocoder.geocode()...');
-              geocoder.geocode(
-                request,
-                function (results, status) {
-                  debugLog('[rocPlaces] ===== Geocode callback fired =====');
-                  const statusStr = status !== undefined && status !== null ? String(status) : 'undefined/null';
-                  debugLog('[rocPlaces] Callback status: ' + statusStr + ' (type: ' + typeof status + ')');
-                  const resultsStr = results !== undefined && results !== null 
-                    ? (Array.isArray(results) ? 'Array(' + results.length + ')' : typeof results)
-                    : 'undefined/null';
-                  debugLog('[rocPlaces] Callback results: ' + resultsStr + ' (type: ' + typeof results + ', isArray: ' + Array.isArray(results) + ')');
-                  const resultsLength = results && Array.isArray(results) ? results.length : (results ? 'not an array' : 'null/undefined');
-                  debugLog('[rocPlaces] Callback results length: ' + resultsLength);
-                  
-                  if (results && Array.isArray(results) && results.length > 0) {
-                    const firstResult = JSON.stringify(results[0], null, 2);
-                    debugLog('[rocPlaces] First result: ' + firstResult);
-                    const formattedAddr = results[0].formatted_address || 'missing';
-                    debugLog('[rocPlaces] First result formatted_address: ' + formattedAddr);
-                    const addrComponents = results[0].address_components ? JSON.stringify(results[0].address_components, null, 2) : 'missing';
-                    debugLog('[rocPlaces] First result address_components: ' + addrComponents);
-                  } else {
-                    debugLog('[rocPlaces] No results or empty array');
-                    if (results && !Array.isArray(results)) {
-                      const resultsJson = JSON.stringify(results, null, 2);
-                      debugLog('[rocPlaces] Results is not an array (type: ' + typeof results + '): ' + resultsJson);
-                    }
-                  }
-                  
-                  // Check status
-                  const statusOK = google.maps.GeocoderStatus.OK;
-                  const statusOKStr = String(statusOK);
-                  debugLog('[rocPlaces] GeocoderStatus.OK value: ' + statusOKStr);
-                  debugLog('[rocPlaces] Status comparison (status === OK): ' + (status === statusOK));
-                  debugLog('[rocPlaces] Status comparison (status == OK): ' + (status == statusOK));
-                  debugLog('[rocPlaces] Status comparison (String(status) === String(OK)): ' + (String(status) === String(statusOK)));
-                  
-                  if (
-                    status !== google.maps.GeocoderStatus.OK ||
-                    !results ||
-                    !Array.isArray(results) ||
-                    results.length === 0
-                  ) {
-                    const errorStatusStr = status !== undefined && status !== null ? String(status) : 'undefined/null';
-                    debugError('[rocPlaces] Reverse geocode failed - Status: ' + errorStatusStr + ' (type: ' + typeof status + ')');
-                    const errorResultsStr = results !== undefined && results !== null 
-                      ? (Array.isArray(results) ? 'Array(' + results.length + ')' : JSON.stringify(results, null, 2))
-                      : 'undefined/null';
-                    debugError('[rocPlaces] Results: ' + errorResultsStr);
-                    const errorResultsLength = results && Array.isArray(results) ? results.length : (results ? 'not an array' : 'null/undefined');
-                    debugError('[rocPlaces] Results length: ' + errorResultsLength);
-                    
-                    if (status === google.maps.GeocoderStatus.ZERO_RESULTS) {
-                      debugError('[rocPlaces] No results found for coordinates: ' + lat + ', ' + lng);
-                    } else if (status === google.maps.GeocoderStatus.OVER_QUERY_LIMIT) {
-                      debugError('[rocPlaces] Geocoding quota exceeded');
-                    } else if (status === google.maps.GeocoderStatus.REQUEST_DENIED) {
-                      debugError('[rocPlaces] Geocoding request denied - check API key permissions');
-                    } else if (status === google.maps.GeocoderStatus.INVALID_REQUEST) {
-                      debugError('[rocPlaces] Invalid request - check coordinates: ' + lat + ', ' + lng);
-                    } else {
-                      debugError('[rocPlaces] Unknown status: ' + errorStatusStr);
-                    }
-                    reject(status || 'UNKNOWN_ERROR');
-                    return;
-                  }
-                  
-                  debugLog('[rocPlaces] Processing successful geocode result...');
-                  const result = results[0];
-                  
-                  // Extract address components
-                  const addressComponents = mapAddressComponents(
-                    result.address_components || []
-                  );
-                  const addrComponentsJson = JSON.stringify(addressComponents, null, 2);
-                  debugLog('[rocPlaces] Mapped address components: ' + addrComponentsJson);
-                  
-                  const location =
-                    result.geometry && result.geometry.location
-                      ? {
-                          lat:
-                            typeof result.geometry.location.lat === 'function'
-                              ? result.geometry.location.lat()
-                              : result.geometry.location.lat,
-                          lng:
-                            typeof result.geometry.location.lng === 'function'
-                              ? result.geometry.location.lng()
-                              : result.geometry.location.lng,
-                        }
-                      : { lat: parseFloat(lat), lng: parseFloat(lng) };
-                  
-                  const locationJson = JSON.stringify(location, null, 2);
-                  debugLog('[rocPlaces] Extracted location: ' + locationJson);
-                  
-                  const mappedResult = {
-                    formatted_address: result.formatted_address || '',
-                    geometry: { location: location },
-                    address_components: addressComponents,
-                  };
-                  const mappedResultJson = JSON.stringify(mappedResult, null, 2);
-                  debugLog('[rocPlaces] Final mapped result: ' + mappedResultJson);
-                  debugLog('[rocPlaces] Reverse geocode returning successfully');
-                  resolve(mappedResult);
-                }
-              );
-              debugLog('[rocPlaces] geocode() call completed, waiting for callback...');
-            } catch (geocoderError) {
-              debugError('[rocPlaces] Error creating or using Geocoder:', geocoderError);
-              debugError('[rocPlaces] Error type:', typeof geocoderError);
-              debugError('[rocPlaces] Error message:', geocoderError?.message);
-              debugError('[rocPlaces] Error stack:', geocoderError?.stack);
-              reject(geocoderError);
+          if (!lat || !lng) {
+            const error = 'Missing latitude or longitude';
+            debugError('[rocPlaces] ' + error);
+            if (onError && typeof onError === 'function') {
+              onError(error);
             }
-          });
+            return;
+          }
+          if (!cachedKey) {
+            const error = 'Places API not initialized';
+            debugError('[rocPlaces] ' + error);
+            if (onError && typeof onError === 'function') {
+              onError(error);
+            }
+            return;
+          }
+          
+          // Call ensurePlacesReady and handle with callbacks
+          ensurePlacesReady(cachedKey)
+            .then(function() {
+              debugLog('[rocPlaces] Reverse geocoding for coordinates:', lat, lng);
+              
+              // Verify main Maps API is available
+              if (!window.google || !window.google.maps) {
+                const error = 'Google Maps API not available';
+                debugError('[rocPlaces] Google Maps API not available for reverse geocoding');
+                if (onError && typeof onError === 'function') {
+                  onError(error);
+                }
+                return;
+              }
+              
+              // Verify Geocoder is available and is a constructor function
+              if (!window.google.maps.Geocoder) {
+                const error = 'Geocoder not available. Please enable Geocoding API in Google Cloud Console.';
+                debugError('[rocPlaces] Geocoder not available');
+                debugError('[rocPlaces] Please ensure:');
+                debugError('[rocPlaces] 1. Geocoding API is enabled in Google Cloud Console');
+                debugError('[rocPlaces] 2. API key has access to Geocoding API');
+                debugError('[rocPlaces] 3. Billing is enabled for your Google Cloud project');
+                if (onError && typeof onError === 'function') {
+                  onError(error);
+                }
+                return;
+              }
+              
+              if (typeof window.google.maps.Geocoder !== 'function') {
+                const error = 'Geocoder is not properly initialized';
+                debugError('[rocPlaces] Geocoder is not a constructor function');
+                debugError('[rocPlaces] Geocoder type:', typeof window.google.maps.Geocoder);
+                if (onError && typeof onError === 'function') {
+                  onError(error);
+                }
+                return;
+              }
+              
+              debugLog('[rocPlaces] Geocoder verified as constructor function, using for reverse geocoding');
+              
+              try {
+                // Verify GeocoderStatus enum is available
+                if (!google.maps.GeocoderStatus) {
+                  const error = 'GeocoderStatus not available';
+                  debugError('[rocPlaces] GeocoderStatus enum not available');
+                  if (onError && typeof onError === 'function') {
+                    onError(error);
+                  }
+                  return;
+                }
+                
+                debugLog('[rocPlaces] Creating Geocoder instance...');
+                const geocoder = new google.maps.Geocoder();
+                if (!geocoder) {
+                  const error = 'Failed to create Geocoder instance';
+                  debugError('[rocPlaces] Failed to create Geocoder instance');
+                  if (onError && typeof onError === 'function') {
+                    onError(error);
+                  }
+                  return;
+                }
+                
+                debugLog('[rocPlaces] Geocoder instance created successfully');
+                debugLog('[rocPlaces] Preparing geocode request for coordinates:', lat, lng);
+                
+                const request = {
+                  location: { lat: parseFloat(lat), lng: parseFloat(lng) },
+                };
+                debugLog('[rocPlaces] Geocode request:', JSON.stringify(request));
+                
+                debugLog('[rocPlaces] Calling geocoder.geocode()...');
+                geocoder.geocode(
+                  request,
+                  function (results, status) {
+                    debugLog('[rocPlaces] ===== Geocode callback fired =====');
+                    const statusStr = status !== undefined && status !== null ? String(status) : 'undefined/null';
+                    debugLog('[rocPlaces] Callback status: ' + statusStr + ' (type: ' + typeof status + ')');
+                    const resultsStr = results !== undefined && results !== null 
+                      ? (Array.isArray(results) ? 'Array(' + results.length + ')' : typeof results)
+                      : 'undefined/null';
+                    debugLog('[rocPlaces] Callback results: ' + resultsStr + ' (type: ' + typeof results + ', isArray: ' + Array.isArray(results) + ')');
+                    const resultsLength = results && Array.isArray(results) ? results.length : (results ? 'not an array' : 'null/undefined');
+                    debugLog('[rocPlaces] Callback results length: ' + resultsLength);
+                    
+                    if (results && Array.isArray(results) && results.length > 0) {
+                      const firstResult = JSON.stringify(results[0], null, 2);
+                      debugLog('[rocPlaces] First result: ' + firstResult);
+                      const formattedAddr = results[0].formatted_address || 'missing';
+                      debugLog('[rocPlaces] First result formatted_address: ' + formattedAddr);
+                      const addrComponents = results[0].address_components ? JSON.stringify(results[0].address_components, null, 2) : 'missing';
+                      debugLog('[rocPlaces] First result address_components: ' + addrComponents);
+                    } else {
+                      debugLog('[rocPlaces] No results or empty array');
+                      if (results && !Array.isArray(results)) {
+                        const resultsJson = JSON.stringify(results, null, 2);
+                        debugLog('[rocPlaces] Results is not an array (type: ' + typeof results + '): ' + resultsJson);
+                      }
+                    }
+                    
+                    // Check status
+                    const statusOK = google.maps.GeocoderStatus.OK;
+                    const statusOKStr = String(statusOK);
+                    debugLog('[rocPlaces] GeocoderStatus.OK value: ' + statusOKStr);
+                    debugLog('[rocPlaces] Status comparison (status === OK): ' + (status === statusOK));
+                    debugLog('[rocPlaces] Status comparison (status == OK): ' + (status == statusOK));
+                    debugLog('[rocPlaces] Status comparison (String(status) === String(OK)): ' + (String(status) === String(statusOK)));
+                    
+                    if (
+                      status !== google.maps.GeocoderStatus.OK ||
+                      !results ||
+                      !Array.isArray(results) ||
+                      results.length === 0
+                    ) {
+                      const errorStatusStr = status !== undefined && status !== null ? String(status) : 'undefined/null';
+                      debugError('[rocPlaces] Reverse geocode failed - Status: ' + errorStatusStr + ' (type: ' + typeof status + ')');
+                      const errorResultsStr = results !== undefined && results !== null 
+                        ? (Array.isArray(results) ? 'Array(' + results.length + ')' : JSON.stringify(results, null, 2))
+                        : 'undefined/null';
+                      debugError('[rocPlaces] Results: ' + errorResultsStr);
+                      const errorResultsLength = results && Array.isArray(results) ? results.length : (results ? 'not an array' : 'null/undefined');
+                      debugError('[rocPlaces] Results length: ' + errorResultsLength);
+                      
+                      let errorMessage = status || 'UNKNOWN_ERROR';
+                      if (status === google.maps.GeocoderStatus.ZERO_RESULTS) {
+                        errorMessage = 'No results found for coordinates: ' + lat + ', ' + lng;
+                        debugError('[rocPlaces] No results found for coordinates: ' + lat + ', ' + lng);
+                      } else if (status === google.maps.GeocoderStatus.OVER_QUERY_LIMIT) {
+                        errorMessage = 'Geocoding quota exceeded';
+                        debugError('[rocPlaces] Geocoding quota exceeded');
+                      } else if (status === google.maps.GeocoderStatus.REQUEST_DENIED) {
+                        errorMessage = 'Geocoding request denied - check API key permissions';
+                        debugError('[rocPlaces] Geocoding request denied - check API key permissions');
+                      } else if (status === google.maps.GeocoderStatus.INVALID_REQUEST) {
+                        errorMessage = 'Invalid request - check coordinates: ' + lat + ', ' + lng;
+                        debugError('[rocPlaces] Invalid request - check coordinates: ' + lat + ', ' + lng);
+                      } else {
+                        debugError('[rocPlaces] Unknown status: ' + errorStatusStr);
+                      }
+                      if (onError && typeof onError === 'function') {
+                        onError(errorMessage);
+                      }
+                      return;
+                    }
+                    
+                    debugLog('[rocPlaces] Processing successful geocode result...');
+                    const result = results[0];
+                    
+                    // Extract address components
+                    const addressComponents = mapAddressComponents(
+                      result.address_components || []
+                    );
+                    const addrComponentsJson = JSON.stringify(addressComponents, null, 2);
+                    debugLog('[rocPlaces] Mapped address components: ' + addrComponentsJson);
+                    
+                    const location =
+                      result.geometry && result.geometry.location
+                        ? {
+                            lat:
+                              typeof result.geometry.location.lat === 'function'
+                                ? result.geometry.location.lat()
+                                : result.geometry.location.lat,
+                            lng:
+                              typeof result.geometry.location.lng === 'function'
+                                ? result.geometry.location.lng()
+                                : result.geometry.location.lng,
+                          }
+                        : { lat: parseFloat(lat), lng: parseFloat(lng) };
+                    
+                    const locationJson = JSON.stringify(location, null, 2);
+                    debugLog('[rocPlaces] Extracted location: ' + locationJson);
+                    
+                    const mappedResult = {
+                      formatted_address: result.formatted_address || '',
+                      geometry: { location: location },
+                      address_components: addressComponents,
+                    };
+                    const mappedResultJson = JSON.stringify(mappedResult, null, 2);
+                    debugLog('[rocPlaces] Final mapped result: ' + mappedResultJson);
+                    debugLog('[rocPlaces] Reverse geocode returning successfully');
+                    if (onSuccess && typeof onSuccess === 'function') {
+                      onSuccess(mappedResult);
+                    }
+                  }
+                );
+                debugLog('[rocPlaces] geocode() call completed, waiting for callback...');
+              } catch (geocoderError) {
+                debugError('[rocPlaces] Error creating or using Geocoder:', geocoderError);
+                debugError('[rocPlaces] Error type:', typeof geocoderError);
+                debugError('[rocPlaces] Error message:', geocoderError?.message);
+                debugError('[rocPlaces] Error stack:', geocoderError?.stack);
+                const errorMessage = geocoderError && geocoderError.message ? geocoderError.message : (geocoderError ? String(geocoderError) : 'Unknown error');
+                if (onError && typeof onError === 'function') {
+                  onError(errorMessage);
+                }
+              }
+            })
+            .catch(function(error) {
+              debugError('[rocPlaces] Error in reverseGeocode:', error);
+              const errorMessage = error && error.message ? error.message : (error ? String(error) : 'Unknown error');
+              if (onError && typeof onError === 'function') {
+                onError(errorMessage);
+              }
+            });
         } catch (error) {
-          debugError('[rocPlaces] Error in reverseGeocode:', error);
-          return Promise.reject(error);
+          // Synchronous error - call error callback immediately
+          debugError('[rocPlaces] Synchronous error in reverseGeocode wrapper:', error);
+          const errorMessage = error && error.message ? error.message : (error ? String(error) : 'Unknown error');
+          if (onError && typeof onError === 'function') {
+            onError(errorMessage);
+          }
         }
       }
 
       return {
-        ensureLoaded: function (apiKey) {
-          return ensurePlacesReady(apiKey);
-        },
-        reverseGeocode: function (lat, lng) {
-          return reverseGeocode(lat, lng);
-        },
-        autocomplete: async function (query) {
-          if (!query || !query.trim()) {
-            return Promise.resolve([]);
-          }
-          if (!cachedKey) {
-            return Promise.reject('Places API not initialized');
-          }
-          
+        ensureLoaded: function (apiKey, onSuccess, onError) {
+          // Callback-based approach to avoid promise conversion issues with minified code
+          // This ensures reliable interop between Dart and JavaScript in production builds
           try {
-            await ensurePlacesReady(cachedKey);
-            debugLog('[rocPlaces] Starting autocomplete for query:', query);
-            debugLog('[rocPlaces] AutocompleteSuggestion available:', !!window.google.maps.places.AutocompleteSuggestion);
-            debugLog('[rocPlaces] AutocompleteService available:', !!window.google.maps.places.AutocompleteService);
-            
-            // Use new AutocompleteSuggestion API if available, fallback to legacy
-            if (
-              window.google.maps.places.AutocompleteSuggestion &&
-              window.google.maps.places.AutocompleteSuggestion
-                .fetchAutocompleteSuggestions
-            ) {
-              try {
-                debugLog('[rocPlaces] Attempting to use AutocompleteSuggestion API');
-                const request = {
-                  input: query,
-                  sessionToken: getSessionToken(),
-                  includedRegionCodes: ['za'],
-                };
-                const response = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(
-                  request
-                );
-                debugLog('[rocPlaces] AutocompleteSuggestion raw response:', response);
-                debugLog('[rocPlaces] Response type:', typeof response);
-                debugLog('[rocPlaces] Response keys:', response ? Object.keys(response) : 'null');
-                debugLog('[rocPlaces] Has suggestions property:', !!(response && response.suggestions));
-                debugLog('[rocPlaces] Suggestions type:', response?.suggestions ? typeof response.suggestions : 'N/A');
-                debugLog('[rocPlaces] Suggestions is array:', Array.isArray(response?.suggestions));
-                debugLog('[rocPlaces] Suggestions length:', response?.suggestions?.length ?? 0);
-                
-                if (response && response.suggestions) {
-                  debugLog('[rocPlaces] Processing', response.suggestions.length, 'suggestions');
-                  const mapped = response.suggestions.map(function (suggestion, index) {
-                    debugLog('[rocPlaces] Suggestion', index, 'raw:', suggestion);
-                    debugLog('[rocPlaces] Suggestion', index, 'type:', typeof suggestion);
-                    debugLog('[rocPlaces] Suggestion', index, 'keys:', suggestion ? Object.keys(suggestion) : 'null');
-                    
-                    // Try different possible response structures
-                    const placePrediction = suggestion.placePrediction || suggestion;
-                    debugLog('[rocPlaces] Suggestion', index, 'placePrediction:', placePrediction);
-                    
-                    // Handle text property - could be string or object with .text property
-                    let textValue = '';
-                    if (placePrediction?.text) {
-                      if (typeof placePrediction.text === 'string') {
-                        textValue = placePrediction.text;
-                      } else if (placePrediction.text?.text) {
-                        textValue = placePrediction.text.text;
-                      }
-                    }
-                    if (!textValue && placePrediction?.description) {
-                      textValue = typeof placePrediction.description === 'string' 
-                        ? placePrediction.description 
-                        : (placePrediction.description?.text || '');
-                    }
-                    if (!textValue && suggestion.text) {
-                      textValue = typeof suggestion.text === 'string' 
-                        ? suggestion.text 
-                        : (suggestion.text?.text || '');
-                    }
-                    if (!textValue && suggestion.description) {
-                      textValue = typeof suggestion.description === 'string' 
-                        ? suggestion.description 
-                        : (suggestion.description?.text || '');
-                    }
-                    
-                    // Handle placeId property - could be placeId or place_id
-                    let placeId = '';
-                    if (placePrediction?.placeId) {
-                      placeId = String(placePrediction.placeId);
-                    } else if (placePrediction?.place_id) {
-                      placeId = String(placePrediction.place_id);
-                    } else if (suggestion.placeId) {
-                      placeId = String(suggestion.placeId);
-                    } else if (suggestion.place_id) {
-                      placeId = String(suggestion.place_id);
-                    }
-                    
-                    debugLog('[rocPlaces] Suggestion', index, 'extracted - textValue:', textValue, 'placeId:', placeId);
-                    
-                    const result = {
-                      description: textValue,
-                      place_id: placeId,
-                      structured_formatting: textValue
-                        ? {
-                            main_text: textValue,
-                            secondary_text: '',
-                          }
-                        : null,
-                    };
-                    
-                    const hasRequiredFields = !!(result.place_id && result.description);
-                    debugLog('[rocPlaces] Suggestion', index, 'mapped result:', result);
-                    debugLog('[rocPlaces] Suggestion', index, 'has required fields:', hasRequiredFields);
-                    
-                    if (!hasRequiredFields) {
-                      console.warn('[rocPlaces] Suggestion', index, 'will be filtered - missing place_id or description');
-                    }
-                    
-                    return result;
-                  }).filter(function(item, index) {
-                    const keep = !!(item.place_id && item.description);
-                    if (!keep) {
-                      console.warn('[rocPlaces] Filtering out item', index, '- place_id:', item.place_id, 'description:', item.description);
-                    }
-                    return keep;
-                  });
-                  
-                  debugLog('[rocPlaces] After filtering:', mapped.length, 'suggestions remain');
-                  debugLog('[rocPlaces] Final mapped array:', mapped);
-                  debugLog('[rocPlaces] Returning', mapped.length, 'mapped suggestions');
-                  return mapped;
-                }
-                console.warn('[rocPlaces] AutocompleteSuggestion returned no suggestions or invalid response structure');
-                console.warn('[rocPlaces] Response was:', response);
-                return [];
-              } catch (error) {
-                // Fallback to legacy API if new API fails
-                console.warn('[rocPlaces] New AutocompleteSuggestion API failed, using legacy:', error);
-                debugError('[rocPlaces] Error details:', error.message, error.stack);
+            if (!apiKey) {
+              const error = 'Missing Maps API key';
+              debugError('[rocPlaces] ' + error);
+              if (onError && typeof onError === 'function') {
+                onError(error);
               }
+              return;
             }
-            // Legacy AutocompleteService fallback
-            if (window.google.maps.places.AutocompleteService) {
-              debugLog('[rocPlaces] Using legacy AutocompleteService');
-              return new Promise(function (resolve, reject) {
-                const autocompleteService = new google.maps.places.AutocompleteService();
-                autocompleteService.getPlacePredictions(
-                  {
-                    input: query,
-                    sessionToken: getSessionToken(),
-                    componentRestrictions: { country: 'za' },
-                  },
-                  function (predictions, status) {
-                    debugLog('[rocPlaces] Legacy API status:', status);
-                    debugLog('[rocPlaces] Legacy API predictions:', predictions);
-                    debugLog('[rocPlaces] Legacy API predictions count:', predictions?.length || 0);
-                    if (
-                      status !== google.maps.places.PlacesServiceStatus.OK ||
-                      !predictions
-                    ) {
-                      debugError('[rocPlaces] Legacy API error:', status);
-                      debugError('[rocPlaces] Legacy API predictions was:', predictions);
-                      reject(status);
-                      return;
-                    }
-                    debugLog('[rocPlaces] Legacy API mapping', predictions.length, 'predictions');
-                    const mapped = predictions.map(function(prediction, index) {
-                      debugLog('[rocPlaces] Legacy prediction', index, ':', prediction);
-                      const mapped = mapPrediction(prediction);
-                      debugLog('[rocPlaces] Legacy prediction', index, 'mapped to:', mapped);
-                      return mapped;
-                    }).filter(function(p, index) {
-                      const keep = p !== null && p.place_id && p.description;
-                      if (!keep) {
-                        console.warn('[rocPlaces] Legacy filtering out prediction', index, '- place_id:', p?.place_id, 'description:', p?.description);
-                      }
-                      return keep;
-                    });
-                    debugLog('[rocPlaces] Legacy API returning', mapped.length, 'mapped predictions');
-                    debugLog('[rocPlaces] Legacy API final mapped array:', mapped);
-                    resolve(mapped);
-                  }
-                );
+            
+            // Call ensurePlacesReady and handle with callbacks
+            ensurePlacesReady(apiKey)
+              .then(function() {
+                debugLog('[rocPlaces] ensurePlacesReady completed successfully');
+                if (onSuccess && typeof onSuccess === 'function') {
+                  onSuccess();
+                }
+              })
+              .catch(function(error) {
+                debugError('[rocPlaces] ensurePlacesReady failed:', error);
+                const errorMessage = error && error.message ? error.message : (error ? String(error) : 'Unknown error');
+                if (onError && typeof onError === 'function') {
+                  onError(errorMessage);
+                }
               });
-            }
-            debugError('[rocPlaces] No autocomplete API available');
-            return Promise.reject('No autocomplete API available');
           } catch (error) {
-            debugError('[rocPlaces] Error in autocomplete:', error);
-            return Promise.reject(error);
+            // Synchronous error - call error callback immediately
+            debugError('[rocPlaces] Synchronous error in ensureLoaded wrapper:', error);
+            const errorMessage = error && error.message ? error.message : (error ? String(error) : 'Unknown error');
+            if (onError && typeof onError === 'function') {
+              onError(errorMessage);
+            }
           }
         },
-        placeDetails: async function (placeId) {
-          if (!placeId) {
-            return Promise.reject('INVALID_PLACE_ID');
-          }
-          if (!cachedKey) {
-            return Promise.reject('Places API not initialized');
-          }
-          
+        reverseGeocode: function (lat, lng, onSuccess, onError) {
+          reverseGeocode(lat, lng, onSuccess, onError);
+        },
+        autocomplete: function (query, onSuccess, onError) {
+          // Callback-based approach to avoid promise conversion issues with minified code
           try {
-            await ensurePlacesReady(cachedKey);
-            debugLog('[rocPlaces] Fetching place details for placeId:', placeId);
-            debugLog('[rocPlaces] Place API available:', !!window.google.maps.places.Place);
-            debugLog('[rocPlaces] PlacesService available:', !!window.google.maps.places.PlacesService);
-            
-            // Use new Place API if available, fallback to legacy
-            if (
-              window.google.maps.places.Place &&
-              typeof window.google.maps.places.Place === 'function'
-            ) {
-              try {
-                debugLog('[rocPlaces] Attempting to use Place API');
-                const place = new window.google.maps.places.Place({ id: placeId });
-                const fields = [
-                  'addressComponents',
-                  'geometry',
-                  'formattedAddress',
-                ];
-                await place.fetchFields({ fields: fields });
-                debugLog('[rocPlaces] Place API response:', {
-                  formattedAddress: place.formattedAddress,
-                  hasGeometry: !!place.geometry,
-                  hasAddressComponents: !!place.addressComponents,
-                });
-                
-                // Handle different possible location formats
-                let location = null;
-                if (place.geometry?.location) {
-                  const loc = place.geometry.location;
-                  if (typeof loc.lat === 'function' && typeof loc.lng === 'function') {
-                    location = {
-                      lat: loc.lat(),
-                      lng: loc.lng(),
-                    };
-                  } else if (typeof loc.lat === 'number' && typeof loc.lng === 'number') {
-                    location = {
-                      lat: loc.lat,
-                      lng: loc.lng,
-                    };
-                  }
-                }
-                
-                const result = {
-                  formatted_address: place.formattedAddress || '',
-                  geometry: location ? { location: location } : null,
-                  address_components: mapAddressComponents(
-                    place.addressComponents || []
-                  ),
-                };
-                debugLog('[rocPlaces] Place API returning:', result);
-                resetSessionToken();
-                return result;
-              } catch (error) {
-                // Fallback to legacy API if new API fails
-                debugError('[rocPlaces] New Place API failed:', error);
-                debugError('[rocPlaces] Error name:', error?.name);
-                debugError('[rocPlaces] Error message:', error?.message);
-                debugError('[rocPlaces] Error stack:', error?.stack);
-                debugError('[rocPlaces] Place object:', place);
-                debugError('[rocPlaces] Fields requested:', fields);
-                debugError('[rocPlaces] PlaceId used:', placeId);
-                // Log additional error properties if available
-                if (error && typeof error === 'object') {
-                  debugError('[rocPlaces] Error properties:', Object.keys(error));
-                  for (const key in error) {
-                    if (error.hasOwnProperty(key)) {
-                      debugError(`[rocPlaces] Error.${key}:`, error[key]);
-                    }
-                  }
-                }
+            if (!query || !query.trim()) {
+              if (onSuccess && typeof onSuccess === 'function') {
+                onSuccess([]);
               }
+              return;
             }
-            // Legacy PlacesService fallback
-            if (window.google.maps.places.PlacesService) {
-              debugLog('[rocPlaces] Using legacy PlacesService');
-              return new Promise(function (resolve, reject) {
-                const div = document.createElement('div');
-                const placesService = new google.maps.places.PlacesService(div);
-                placesService.getDetails(
-                  {
-                    placeId: placeId,
-                    fields: ['address_components', 'geometry', 'formatted_address'],
-                    sessionToken: getSessionToken(),
-                  },
-                  function (result, status) {
-                    debugLog('[rocPlaces] Legacy API status:', status);
-                    debugLog('[rocPlaces] Legacy API result:', result ? 'received' : 'null');
-                    if (
-                      status !== google.maps.places.PlacesServiceStatus.OK ||
-                      !result
-                    ) {
-                      debugError('[rocPlaces] Legacy API error:', status);
-                      reject(status);
-                      resetSessionToken();
-                      return;
-                    }
-                    const location =
-                      result.geometry && result.geometry.location
-                        ? {
-                            lat: result.geometry.location.lat(),
-                            lng: result.geometry.location.lng(),
-                          }
-                        : null;
-                    const mappedResult = {
-                      formatted_address: result.formatted_address || '',
-                      geometry: location ? { location: location } : null,
-                      address_components: mapAddressComponents(
-                        result.address_components || []
-                      ),
+            if (!cachedKey) {
+              const error = 'Places API not initialized';
+              debugError('[rocPlaces] ' + error);
+              if (onError && typeof onError === 'function') {
+                onError(error);
+              }
+              return;
+            }
+            
+            // Call ensurePlacesReady and handle with callbacks
+            ensurePlacesReady(cachedKey)
+              .then(function() {
+                debugLog('[rocPlaces] Starting autocomplete for query:', query);
+                debugLog('[rocPlaces] AutocompleteSuggestion available:', !!window.google.maps.places.AutocompleteSuggestion);
+                debugLog('[rocPlaces] AutocompleteService available:', !!window.google.maps.places.AutocompleteService);
+                
+                // Use new AutocompleteSuggestion API if available, fallback to legacy
+                if (
+                  window.google.maps.places.AutocompleteSuggestion &&
+                  window.google.maps.places.AutocompleteSuggestion
+                    .fetchAutocompleteSuggestions
+                ) {
+                  try {
+                    debugLog('[rocPlaces] Attempting to use AutocompleteSuggestion API');
+                    const request = {
+                      input: query,
+                      sessionToken: getSessionToken(),
+                      includedRegionCodes: ['za'],
                     };
-                    debugLog('[rocPlaces] Legacy API returning:', mappedResult);
-                    resetSessionToken();
-                    resolve(mappedResult);
+                    window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(request)
+                      .then(function(response) {
+                        debugLog('[rocPlaces] AutocompleteSuggestion raw response:', response);
+                        debugLog('[rocPlaces] Response type:', typeof response);
+                        debugLog('[rocPlaces] Response keys:', response ? Object.keys(response) : 'null');
+                        debugLog('[rocPlaces] Has suggestions property:', !!(response && response.suggestions));
+                        debugLog('[rocPlaces] Suggestions type:', response?.suggestions ? typeof response.suggestions : 'N/A');
+                        debugLog('[rocPlaces] Suggestions is array:', Array.isArray(response?.suggestions));
+                        debugLog('[rocPlaces] Suggestions length:', response?.suggestions?.length ?? 0);
+                        
+                        if (response && response.suggestions) {
+                          const suggestionCount = response.suggestions.length;
+                          console.log('[rocPlaces] Processing', suggestionCount, 'suggestions');
+                          
+                          if (suggestionCount > 0) {
+                            const firstSuggestion = response.suggestions[0];
+                            console.log('[rocPlaces] First suggestion raw:', JSON.stringify(firstSuggestion, null, 2));
+                            console.log('[rocPlaces] First suggestion keys:', Object.keys(firstSuggestion));
+                          }
+                          
+                          const mapped = response.suggestions.map(function (suggestion, index) {
+                            debugLog('[rocPlaces] Suggestion', index, 'raw:', suggestion);
+                            debugLog('[rocPlaces] Suggestion', index, 'type:', typeof suggestion);
+                            debugLog('[rocPlaces] Suggestion', index, 'keys:', suggestion ? Object.keys(suggestion) : 'null');
+                            
+                            // Try different possible response structures
+                            const placePrediction = suggestion.placePrediction || suggestion;
+                            debugLog('[rocPlaces] Suggestion', index, 'placePrediction:', placePrediction);
+                            
+                            // Add detailed logging for first item
+                            if (index === 0) {
+                              console.log('[rocPlaces] First suggestion structure:', {
+                                suggestion: suggestion,
+                                placePrediction: placePrediction,
+                                hasText: !!(suggestion.text || placePrediction?.text),
+                                hasDescription: !!(suggestion.description || placePrediction?.description),
+                                hasPlaceId: !!(suggestion.placeId || suggestion.place_id || placePrediction?.placeId || placePrediction?.place_id)
+                              });
+                            }
+                            
+                            // Handle text property - could be string or object with .text property
+                            let textValue = '';
+                            if (placePrediction?.text) {
+                              if (typeof placePrediction.text === 'string') {
+                                textValue = placePrediction.text;
+                              } else if (placePrediction.text?.text) {
+                                textValue = placePrediction.text.text;
+                              }
+                            }
+                            if (!textValue && placePrediction?.description) {
+                              textValue = typeof placePrediction.description === 'string' 
+                                ? placePrediction.description 
+                                : (placePrediction.description?.text || '');
+                            }
+                            if (!textValue && suggestion.text) {
+                              textValue = typeof suggestion.text === 'string' 
+                                ? suggestion.text 
+                                : (suggestion.text?.text || '');
+                            }
+                            if (!textValue && suggestion.description) {
+                              textValue = typeof suggestion.description === 'string' 
+                                ? suggestion.description 
+                                : (suggestion.description?.text || '');
+                            }
+                            
+                            // Handle placeId property - could be placeId or place_id
+                            let placeId = '';
+                            if (placePrediction?.placeId) {
+                              placeId = String(placePrediction.placeId);
+                            } else if (placePrediction?.place_id) {
+                              placeId = String(placePrediction.place_id);
+                            } else if (suggestion.placeId) {
+                              placeId = String(suggestion.placeId);
+                            } else if (suggestion.place_id) {
+                              placeId = String(suggestion.place_id);
+                            }
+                            
+                            debugLog('[rocPlaces] Suggestion', index, 'extracted - textValue:', textValue, 'placeId:', placeId);
+                            
+                            // Log first item details
+                            if (index === 0) {
+                              console.log('[rocPlaces] First suggestion - textValue:', textValue, 'placeId:', placeId);
+                              console.log('[rocPlaces] First suggestion extracted:', {
+                                textValue: textValue,
+                                placeId: placeId,
+                                hasText: !!textValue,
+                                hasPlaceId: !!placeId
+                              });
+                            }
+                            
+                            const result = {
+                              description: textValue,
+                              place_id: placeId,
+                              structured_formatting: textValue
+                                ? {
+                                    main_text: textValue,
+                                    secondary_text: '',
+                                  }
+                                : null,
+                            };
+                            
+                            const hasRequiredFields = !!(result.place_id && result.description);
+                            debugLog('[rocPlaces] Suggestion', index, 'mapped result:', result);
+                            debugLog('[rocPlaces] Suggestion', index, 'has required fields:', hasRequiredFields);
+                            
+                            if (!hasRequiredFields) {
+                              console.warn('[rocPlaces] Suggestion', index, 'will be filtered - missing place_id or description');
+                            }
+                            
+                            return result;
+                          }).filter(function(item, index) {
+                            const keep = !!(item.place_id && item.description);
+                            if (!keep && index < 3) {
+                              console.warn('[rocPlaces] Filtering out item', index, '- place_id:', item.place_id, 'description:', item.description);
+                            }
+                            return keep;
+                          });
+                          
+                          console.log('[rocPlaces] After filtering:', mapped.length, 'suggestions remain');
+                          if (mapped.length > 0) {
+                            console.log('[rocPlaces] Final mapped array (first 3):', JSON.stringify(mapped.slice(0, 3), null, 2));
+                          } else {
+                            console.warn('[rocPlaces] WARNING: All suggestions were filtered out!');
+                            console.warn('[rocPlaces] Original suggestions count:', response.suggestions.length);
+                          }
+                          
+                          console.log('[rocPlaces] Returning', mapped.length, 'mapped suggestions');
+                          
+                          if (onSuccess && typeof onSuccess === 'function') {
+                            console.log('[rocPlaces] onSuccess is function:', typeof onSuccess);
+                            console.log('[rocPlaces] Calling onSuccess with', mapped.length, 'items');
+                            
+                            // Log the actual array being passed
+                            console.log('[rocPlaces] Array to pass:', mapped);
+                            
+                            try {
+                              onSuccess(mapped);
+                              console.log('[rocPlaces] onSuccess callback completed - no errors');
+                            } catch (error) {
+                              console.error('[rocPlaces] ERROR calling onSuccess:', error);
+                              console.error('[rocPlaces] Error message:', error.message);
+                              console.error('[rocPlaces] Error stack:', error.stack);
+                              if (onError && typeof onError === 'function') {
+                                onError('Failed to process autocomplete results: ' + (error.message || error));
+                              }
+                            }
+                          } else {
+                            console.error('[rocPlaces] ERROR: onSuccess is not a function!', typeof onSuccess);
+                          }
+                          return;
+                        }
+                        console.warn('[rocPlaces] AutocompleteSuggestion returned no suggestions or invalid response structure');
+                        console.warn('[rocPlaces] Response was:', response);
+                        if (onSuccess && typeof onSuccess === 'function') {
+                          try {
+                            onSuccess([]);
+                          } catch (error) {
+                            console.error('[rocPlaces] Error calling onSuccess with empty array:', error);
+                          }
+                        }
+                      })
+                      .catch(function(error) {
+                        // Fallback to legacy API if new API fails
+                        console.warn('[rocPlaces] New AutocompleteSuggestion API failed, using legacy:', error);
+                        debugError('[rocPlaces] Error details:', error.message, error.stack);
+                        // Continue to legacy API fallback below
+                        _tryLegacyAutocomplete();
+                      });
+                  } catch (error) {
+                    // Fallback to legacy API if new API fails
+                    console.warn('[rocPlaces] New AutocompleteSuggestion API failed, using legacy:', error);
+                    debugError('[rocPlaces] Error details:', error.message, error.stack);
+                    _tryLegacyAutocomplete();
                   }
-                );
+                } else {
+                  _tryLegacyAutocomplete();
+                }
+                
+                function _tryLegacyAutocomplete() {
+                  // Legacy AutocompleteService fallback
+                  if (window.google.maps.places.AutocompleteService) {
+                    debugLog('[rocPlaces] Using legacy AutocompleteService');
+                    const autocompleteService = new google.maps.places.AutocompleteService();
+                    autocompleteService.getPlacePredictions(
+                      {
+                        input: query,
+                        sessionToken: getSessionToken(),
+                        componentRestrictions: { country: 'za' },
+                      },
+                      function (predictions, status) {
+                        debugLog('[rocPlaces] Legacy API status:', status);
+                        debugLog('[rocPlaces] Legacy API predictions:', predictions);
+                        debugLog('[rocPlaces] Legacy API predictions count:', predictions?.length || 0);
+                        if (
+                          status !== google.maps.places.PlacesServiceStatus.OK ||
+                          !predictions
+                        ) {
+                          debugError('[rocPlaces] Legacy API error:', status);
+                          debugError('[rocPlaces] Legacy API predictions was:', predictions);
+                          const errorMessage = status || 'Autocomplete request failed';
+                          if (onError && typeof onError === 'function') {
+                            onError(errorMessage);
+                          }
+                          return;
+                        }
+                        debugLog('[rocPlaces] Legacy API mapping', predictions.length, 'predictions');
+                        const mapped = predictions.map(function(prediction, index) {
+                          debugLog('[rocPlaces] Legacy prediction', index, ':', prediction);
+                          const mapped = mapPrediction(prediction);
+                          debugLog('[rocPlaces] Legacy prediction', index, 'mapped to:', mapped);
+                          return mapped;
+                        }).filter(function(p, index) {
+                          const keep = p !== null && p.place_id && p.description;
+                          if (!keep) {
+                            console.warn('[rocPlaces] Legacy filtering out prediction', index, '- place_id:', p?.place_id, 'description:', p?.description);
+                          }
+                          return keep;
+                        });
+                        console.log('[rocPlaces] Legacy API returning', mapped.length, 'mapped predictions');
+                        console.log('[rocPlaces] Legacy API final mapped array:', JSON.stringify(mapped, null, 2));
+                        if (onSuccess && typeof onSuccess === 'function') {
+                          console.log('[rocPlaces] onSuccess is function (legacy):', typeof onSuccess);
+                          console.log('[rocPlaces] Calling onSuccess with array length (legacy):', mapped.length);
+                          try {
+                            const testResult = onSuccess.call ? 'has call method' : 'no call method';
+                            console.log('[rocPlaces] Callback test (legacy):', testResult);
+                            console.log('[rocPlaces] First item sample (legacy):', mapped.length > 0 ? JSON.stringify(mapped[0]) : 'empty array');
+                            onSuccess(mapped);
+                            console.log('[rocPlaces] onSuccess callback completed (legacy)');
+                          } catch (error) {
+                            console.error('[rocPlaces] Error calling onSuccess callback (legacy):', error);
+                            console.error('[rocPlaces] Error stack:', error.stack);
+                            if (onError && typeof onError === 'function') {
+                              onError('Failed to process autocomplete results: ' + (error.message || error));
+                            }
+                          }
+                        }
+                      }
+                    );
+                  } else {
+                    debugError('[rocPlaces] No autocomplete API available');
+                    const error = 'No autocomplete API available';
+                    if (onError && typeof onError === 'function') {
+                      onError(error);
+                    }
+                  }
+                }
+              })
+              .catch(function(error) {
+                debugError('[rocPlaces] Error in autocomplete:', error);
+                const errorMessage = error && error.message ? error.message : (error ? String(error) : 'Unknown error');
+                if (onError && typeof onError === 'function') {
+                  onError(errorMessage);
+                }
               });
-            }
-            debugError('[rocPlaces] No place details API available');
-            return Promise.reject('No place details API available');
           } catch (error) {
-            debugError('[rocPlaces] Error in placeDetails:', error);
-            return Promise.reject(error);
+            // Synchronous error - call error callback immediately
+            debugError('[rocPlaces] Synchronous error in autocomplete wrapper:', error);
+            const errorMessage = error && error.message ? error.message : (error ? String(error) : 'Unknown error');
+            if (onError && typeof onError === 'function') {
+              onError(errorMessage);
+            }
+          }
+        },
+        placeDetails: function (placeId, onSuccess, onError) {
+          // Callback-based approach to avoid promise conversion issues with minified code
+          try {
+            if (!placeId) {
+              const error = 'INVALID_PLACE_ID';
+              debugError('[rocPlaces] ' + error);
+              if (onError && typeof onError === 'function') {
+                onError(error);
+              }
+              return;
+            }
+            if (!cachedKey) {
+              const error = 'Places API not initialized';
+              debugError('[rocPlaces] ' + error);
+              if (onError && typeof onError === 'function') {
+                onError(error);
+              }
+              return;
+            }
+            
+            // Call ensurePlacesReady and handle with callbacks
+            ensurePlacesReady(cachedKey)
+              .then(function() {
+                debugLog('[rocPlaces] Fetching place details for placeId:', placeId);
+                debugLog('[rocPlaces] Place API available:', !!window.google.maps.places.Place);
+                debugLog('[rocPlaces] PlacesService available:', !!window.google.maps.places.PlacesService);
+                
+                // Use new Place API if available, fallback to legacy
+                if (
+                  window.google.maps.places.Place &&
+                  typeof window.google.maps.places.Place === 'function'
+                ) {
+                  try {
+                    debugLog('[rocPlaces] Attempting to use Place API');
+                    const place = new window.google.maps.places.Place({ id: placeId });
+                    const fields = [
+                      'addressComponents',
+                      'geometry',
+                      'formattedAddress',
+                    ];
+                    place.fetchFields({ fields: fields })
+                      .then(function() {
+                        debugLog('[rocPlaces] Place API response:', {
+                          formattedAddress: place.formattedAddress,
+                          hasGeometry: !!place.geometry,
+                          hasAddressComponents: !!place.addressComponents,
+                        });
+                        
+                        // Handle different possible location formats
+                        let location = null;
+                        if (place.geometry?.location) {
+                          const loc = place.geometry.location;
+                          if (typeof loc.lat === 'function' && typeof loc.lng === 'function') {
+                            location = {
+                              lat: loc.lat(),
+                              lng: loc.lng(),
+                            };
+                          } else if (typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+                            location = {
+                              lat: loc.lat,
+                              lng: loc.lng,
+                            };
+                          }
+                        }
+                        
+                        const result = {
+                          formatted_address: place.formattedAddress || '',
+                          geometry: location ? { location: location } : null,
+                          address_components: mapAddressComponents(
+                            place.addressComponents || []
+                          ),
+                        };
+                        debugLog('[rocPlaces] Place API returning:', result);
+                        resetSessionToken();
+                        if (onSuccess && typeof onSuccess === 'function') {
+                          onSuccess(result);
+                        }
+                      })
+                      .catch(function(error) {
+                        // Fallback to legacy API if new API fails
+                        debugError('[rocPlaces] New Place API failed:', error);
+                        debugError('[rocPlaces] Error name:', error?.name);
+                        debugError('[rocPlaces] Error message:', error?.message);
+                        debugError('[rocPlaces] Error stack:', error?.stack);
+                        debugError('[rocPlaces] PlaceId used:', placeId);
+                        // Log additional error properties if available
+                        if (error && typeof error === 'object') {
+                          debugError('[rocPlaces] Error properties:', Object.keys(error));
+                          for (const key in error) {
+                            if (error.hasOwnProperty(key)) {
+                              debugError(`[rocPlaces] Error.${key}:`, error[key]);
+                            }
+                          }
+                        }
+                        // Continue to legacy API fallback below
+                        _tryLegacyPlaceDetails();
+                      });
+                  } catch (error) {
+                    // Fallback to legacy API if new API fails
+                    debugError('[rocPlaces] New Place API failed:', error);
+                    _tryLegacyPlaceDetails();
+                  }
+                } else {
+                  _tryLegacyPlaceDetails();
+                }
+                
+                function _tryLegacyPlaceDetails() {
+                  // Legacy PlacesService fallback
+                  if (window.google.maps.places.PlacesService) {
+                    debugLog('[rocPlaces] Using legacy PlacesService');
+                    const div = document.createElement('div');
+                    const placesService = new google.maps.places.PlacesService(div);
+                    placesService.getDetails(
+                      {
+                        placeId: placeId,
+                        fields: ['address_components', 'geometry', 'formatted_address'],
+                        sessionToken: getSessionToken(),
+                      },
+                      function (result, status) {
+                        debugLog('[rocPlaces] Legacy API status:', status);
+                        debugLog('[rocPlaces] Legacy API result:', result ? 'received' : 'null');
+                        if (
+                          status !== google.maps.places.PlacesServiceStatus.OK ||
+                          !result
+                        ) {
+                          debugError('[rocPlaces] Legacy API error:', status);
+                          const errorMessage = status || 'Place details request failed';
+                          resetSessionToken();
+                          if (onError && typeof onError === 'function') {
+                            onError(errorMessage);
+                          }
+                          return;
+                        }
+                        const location =
+                          result.geometry && result.geometry.location
+                            ? {
+                                lat: result.geometry.location.lat(),
+                                lng: result.geometry.location.lng(),
+                              }
+                            : null;
+                        const mappedResult = {
+                          formatted_address: result.formatted_address || '',
+                          geometry: location ? { location: location } : null,
+                          address_components: mapAddressComponents(
+                            result.address_components || []
+                          ),
+                        };
+                        debugLog('[rocPlaces] Legacy API returning:', mappedResult);
+                        resetSessionToken();
+                        if (onSuccess && typeof onSuccess === 'function') {
+                          onSuccess(mappedResult);
+                        }
+                      }
+                    );
+                  } else {
+                    debugError('[rocPlaces] No place details API available');
+                    const error = 'No place details API available';
+                    if (onError && typeof onError === 'function') {
+                      onError(error);
+                    }
+                  }
+                }
+              })
+              .catch(function(error) {
+                debugError('[rocPlaces] Error in placeDetails:', error);
+                const errorMessage = error && error.message ? error.message : (error ? String(error) : 'Unknown error');
+                if (onError && typeof onError === 'function') {
+                  onError(errorMessage);
+                }
+              });
+          } catch (error) {
+            // Synchronous error - call error callback immediately
+            debugError('[rocPlaces] Synchronous error in placeDetails wrapper:', error);
+            const errorMessage = error && error.message ? error.message : (error ? String(error) : 'Unknown error');
+            if (onError && typeof onError === 'function') {
+              onError(errorMessage);
+            }
           }
         },
       };
-    })();
+      })();
+      
+      console.log('[rocPlaces] rocPlaces initialized successfully:', typeof window.rocPlaces);
+      console.log('[rocPlaces] rocPlaces has ensureLoaded:', typeof window.rocPlaces?.ensureLoaded);
+      console.log('[rocPlaces] rocPlaces has autocomplete:', typeof window.rocPlaces?.autocomplete);
+    } catch (error) {
+      console.error('[rocPlaces] ERROR initializing rocPlaces:', error);
+      console.error('[rocPlaces] Error stack:', error.stack);
+      // Set to null so we know it failed
+      window.rocPlaces = null;
+    }
   </script>
   <script>
     // Helper functions for Dart JS interop to check Maps API availability

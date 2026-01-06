@@ -22,13 +22,13 @@ class ReportingRepositorySupabase implements ReportingRepository {
 
   @override
   Future<Result<List<DailyClaimReport>>> fetchDailyReports({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     int limit = 90,
   }) async {
     final result = await _remote.fetchDailyReports(
-      startDate: startDate,
-      endDate: endDate,
+      startDate: null, // Always show all data
+      endDate: null,
       limit: limit,
     );
 
@@ -43,14 +43,14 @@ class ReportingRepositorySupabase implements ReportingRepository {
 
   @override
   Future<Result<PaginatedResult<AgentPerformanceReport>>> fetchAgentPerformanceReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     final result = await _remote.fetchAgentPerformanceReportPage(
-      startDate: startDate,
-      endDate: endDate,
+      startDate: null, // Always show all data
+      endDate: null,
       cursor: cursor,
       limit: limit,
     );
@@ -68,14 +68,14 @@ class ReportingRepositorySupabase implements ReportingRepository {
 
   @override
   Future<Result<PaginatedResult<StatusDistributionReport>>> fetchStatusDistributionReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     final result = await _remote.fetchStatusDistributionReportPage(
-      startDate: startDate,
-      endDate: endDate,
+      startDate: null, // Always show all data
+      endDate: null,
       cursor: cursor,
       limit: limit,
     );
@@ -93,14 +93,14 @@ class ReportingRepositorySupabase implements ReportingRepository {
 
   @override
   Future<Result<PaginatedResult<DamageCauseReport>>> fetchDamageCauseReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     final result = await _remote.fetchDamageCauseReportPage(
-      startDate: startDate,
-      endDate: endDate,
+      startDate: null, // Always show all data
+      endDate: null,
       cursor: cursor,
       limit: limit,
     );
@@ -118,15 +118,15 @@ class ReportingRepositorySupabase implements ReportingRepository {
 
   @override
   Future<Result<PaginatedResult<GeographicReport>>> fetchGeographicReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? groupBy,
     String? cursor,
     int limit = 100,
   }) async {
     final result = await _remote.fetchGeographicReportPage(
-      startDate: startDate,
-      endDate: endDate,
+      startDate: null, // Always show all data
+      endDate: null,
       groupBy: groupBy,
       cursor: cursor,
       limit: limit,
@@ -145,14 +145,14 @@ class ReportingRepositorySupabase implements ReportingRepository {
 
   @override
   Future<Result<PaginatedResult<InsurerPerformanceReport>>> fetchInsurerPerformanceReportPage({
-    required DateTime startDate,
-    required DateTime endDate,
+    DateTime? startDate,
+    DateTime? endDate,
     String? cursor,
     int limit = 100,
   }) async {
     final result = await _remote.fetchInsurerPerformanceReportPage(
-      startDate: startDate,
-      endDate: endDate,
+      startDate: null, // Always show all data
+      endDate: null,
       cursor: cursor,
       limit: limit,
     );
