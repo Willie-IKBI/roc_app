@@ -12,6 +12,7 @@ import 'core/theme/theme_mode_provider.dart';
 import 'core/theme/theme_preference_provider.dart';
 import 'core/utils/web_console.dart';
 import 'core/widgets/glass_error_state.dart';
+import 'data/clients/supabase_client.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -151,6 +152,15 @@ Future<void> main() async {
           // Enable automatic token refresh
           autoRefreshToken: true,
         ),
+      );
+      
+      // Set up proactive token refresh to prevent users from being logged out
+      final client = Supabase.instance.client;
+      setupProactiveTokenRefresh(client);
+      
+      AppLogger.debug(
+        'Proactive token refresh initialized',
+        name: 'AppInit',
       );
     } catch (supabaseError, supabaseStack) {
       AppLogger.error(
